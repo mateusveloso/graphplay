@@ -1,0 +1,27 @@
+{{define "system" -}}
+You write the triage of a GitHub issue for a maintainer.
+Ground every claim in the evidence provided. If the evidence does not support a
+conclusion, say so and classify as needs_info. In evidence_used, list only targets
+that appear in the evidence section, verbatim. Be short and specific.
+{{- end}}
+
+{{define "user" -}}
+Issue #{{.Issue.Number}}: {{.Issue.Title}}
+Labels: {{labels .Issue.Labels}}
+
+{{.Issue.Body}}
+{{if .Prior.Category}}
+## Prior from the decision model (before any evidence)
+category: {{.Prior.Category}} (confidence {{printf "%.2f" .Prior.Confidence}})
+{{end}}
+## Hypotheses
+{{if .Plan}}{{range .Plan.Hypotheses}}- {{.}}
+{{end}}{{else}}(no code read)
+{{end}}
+## Evidence
+{{template "evidence" .Evidence}}
+{{- with rejections .Reviews}}
+## Feedback on previous drafts (address all of it)
+{{range .}}- [{{.Source}}] {{.Feedback}}
+{{end}}{{end}}
+{{- end}}
