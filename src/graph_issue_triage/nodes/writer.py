@@ -10,7 +10,7 @@ USER = """Issue #{number}: {title}
 Labels: {labels}
 
 {body}
-
+{prior}
 ## Hypotheses
 {hypotheses}
 
@@ -36,15 +36,27 @@ def _render_feedback(reviews: list[Review]) -> str:
     return "\n## Feedback on previous drafts (address all of it)\n" + "\n".join(lines)
 
 
+def _render_prior(state: TriageState) -> str:
+    prior = state.get("prior")
+    if not prior or prior.category is None:
+        return ""
+    return (
+        f"\n## Prior from the decision model (before any evidence)\n"
+        f"category: {prior.category} (confidence {prior.confidence:.2f})\n"
+    )
+
+
 def make_writer(llm: StructuredLLM):
     def writer(state: TriageState) -> dict:
         issue = state["issue"]
+        plan = state.get("plan")
         prompt = USER.format(
             number=issue.number,
             title=issue.title,
             labels=", ".join(issue.labels) or "none",
             body=issue.body,
-            hypotheses="\n".join(f"- {h}" for h in state["plan"].hypotheses),
+            prior=_render_prior(state),
+            hypotheses="\n".join(f"- {h}" for h in plan.hypotheses) if plan else "(no code read)",
             evidence=_render_evidence(state.get("evidence", [])),
             feedback=_render_feedback(state.get("reviews", [])),
         )

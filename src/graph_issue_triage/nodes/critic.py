@@ -10,6 +10,9 @@ When rejecting, say exactly what to change. Do not rewrite the triage yourself."
 USER = """## Evidence available
 {evidence}
 
+## Rubric probabilities from the decision model (0.5 means it could not tell)
+{rubric}
+
 ## Triage under review
 category: {category}
 confidence: {confidence}
@@ -20,23 +23,17 @@ next_steps:
 
 
 def make_critic(llm: StructuredLLM):
+    """Generative judgment, paid only for drafts the cheaper checks could not settle."""
+
     def critic(state: TriageState) -> dict:
         draft = state["draft"]
-        rounds = state.get("critic_rounds", 0) + 1
-        known_targets = {e.target for e in state.get("evidence", [])}
-
-        # Code checks what code can check. The model only sees drafts that pass.
-        unknown = [t for t in draft.evidence_used if t not in known_targets]
-        if unknown:
-            feedback = f"evidence_used references targets that were never collected: {unknown}"
-            review = Review(source="validator", approved=False, feedback=feedback)
-            return {"reviews": [review], "critic_rounds": rounds}
-
+        rubric = state.get("rubric") or {}
         prompt = USER.format(
             evidence="\n".join(
                 f"- {e.kind}: {e.target}" + (" (failed)" if e.error else "")
                 for e in state.get("evidence", [])
             ),
+            rubric="\n".join(f"- {k}: {v:.2f}" for k, v in rubric.items()) or "(not available)",
             category=draft.category,
             confidence=draft.confidence,
             summary=draft.summary,
@@ -45,6 +42,6 @@ def make_critic(llm: StructuredLLM):
         )
         review: Review = llm.ask(Review, SYSTEM, prompt)
         review.source = "critic"
-        return {"reviews": [review], "critic_rounds": rounds}
+        return {"reviews": [review]}
 
     return critic

@@ -6,22 +6,29 @@ config:
 graph TD;
 	__start__([<p>__start__</p>]):::first
 	load_issue(load_issue)
+	classify(classify)
 	planner(planner)
 	collect(collect)
 	writer(writer)
+	check(check)
 	critic(critic)
 	gate(gate)
 	finalize(finalize)
 	__end__([<p>__end__</p>]):::last
 	__start__ --> load_issue;
+	check -.-> critic;
+	check -.-> gate;
+	check -.-> writer;
+	classify -.-> planner;
+	classify -.-> writer;
 	collect --> writer;
 	critic -.-> gate;
 	critic -.-> writer;
 	gate -.-> finalize;
 	gate -.-> writer;
-	load_issue --> planner;
+	load_issue --> classify;
 	planner --> collect;
-	writer --> critic;
+	writer --> check;
 	finalize --> __end__;
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0

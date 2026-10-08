@@ -3,6 +3,7 @@ from collections import defaultdict, deque
 import pytest
 
 from graph_issue_triage.config import Settings
+from graph_issue_triage.llm import Models
 from graph_issue_triage.state import EvidenceRequest, Plan, Review, Triage
 
 
@@ -23,6 +24,34 @@ class FakeLLM:
         if not self.scripts[schema]:
             raise AssertionError(f"no scripted answer left for {schema.__name__}")
         return self.scripts[schema].popleft()
+
+
+class FakeDecider:
+    """Scripted Jev answers, one dict per call. Records the questions it was asked."""
+
+    def __init__(self, *answers):
+        self.answers = deque(answers)
+        self.calls: list[dict] = []
+
+    def decide(self, state, questions):
+        self.calls.append(questions)
+        return self.answers.popleft() if self.answers else None
+
+
+def jev_choice(option, confidence):
+    return {"choice": option, "confidence": confidence}
+
+
+def jev_noul(p):
+    return {"noul": p}
+
+
+def rubric_answers(grounded=0.95, category_matches=0.95, actionable=0.95):
+    return {
+        "grounded": jev_noul(grounded),
+        "category_matches": jev_noul(category_matches),
+        "actionable": jev_noul(actionable),
+    }
 
 
 class FakeRepo:
@@ -54,7 +83,11 @@ class FakeRepo:
 
 @pytest.fixture
 def settings(tmp_path):
-    return Settings(model="fake", max_critic_rounds=2, max_evidence_requests=3, state_dir=tmp_path)
+    return Settings(max_critic_rounds=2, max_evidence_requests=3, state_dir=tmp_path)
+
+
+def models(llm):
+    return Models.single(llm)
 
 
 @pytest.fixture

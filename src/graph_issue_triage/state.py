@@ -43,8 +43,16 @@ class Triage(BaseModel):
     confidence: Literal["low", "medium", "high"]
 
 
+class Prior(BaseModel):
+    """What the decision model thinks before any evidence is read."""
+
+    category: str | None = None
+    confidence: float | None = None
+    needs_code: float | None = Field(default=None, description="P(answering needs the code).")
+
+
 class Review(BaseModel):
-    source: Literal["validator", "critic", "human"] = "critic"
+    source: Literal["validator", "rubric", "critic", "human"] = "critic"
     approved: bool
     feedback: str
 
@@ -52,10 +60,13 @@ class Review(BaseModel):
 class TriageState(TypedDict, total=False):
     issue_ref: str
     issue: Issue
+    prior: Prior
     plan: Plan
     evidence: list[Evidence]
     draft: Triage
     reviews: Annotated[list[Review], operator.add]
     critic_rounds: int
+    verdict: Literal["reject", "uncertain", "pass"]
+    rubric: dict[str, float] | None
     approved: bool
     output_path: str

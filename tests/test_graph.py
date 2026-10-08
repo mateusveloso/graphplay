@@ -3,11 +3,14 @@ from langgraph.types import Command
 
 from graph_issue_triage.graph import build_graph
 from graph_issue_triage.state import Triage
-from tests.conftest import FakeLLM, FakeRepo, approve, reject
+from tests.conftest import FakeDecider, FakeLLM, FakeRepo, approve, models, reject
 
 
-def _run(llm, settings, thread="t1"):
-    graph = build_graph(llm, FakeRepo(), settings).compile(checkpointer=MemorySaver())
+def _run(llm, settings, thread="t1", decider=None):
+    decider = decider or FakeDecider()
+    graph = build_graph(models(llm), FakeRepo(), decider, settings).compile(
+        checkpointer=MemorySaver()
+    )
     config = {"configurable": {"thread_id": thread}}
     return graph, config, graph.invoke({"issue_ref": "octo/demo#7"}, config)
 

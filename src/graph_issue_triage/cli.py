@@ -10,12 +10,17 @@ from langgraph.types import Command
 from graph_issue_triage.config import Settings
 from graph_issue_triage.github import GitHubClient
 from graph_issue_triage.graph import build_graph
-from graph_issue_triage.llm import LangChainLLM
+from graph_issue_triage.jev import JevClient, NoDecider
+from graph_issue_triage.llm import LangChainLLM, Models
 
 
 def _print_interrupt(result: dict, thread_id: str) -> None:
     payload = result["__interrupt__"][0].value
     print(f"\n=== draft for {payload['issue_ref']} (critic rounds: {payload['critic_rounds']}) ===")
+    if payload.get("prior"):
+        print("prior:", json.dumps(payload["prior"], ensure_ascii=False))
+    if payload.get("rubric"):
+        print("rubric:", json.dumps(payload["rubric"], ensure_ascii=False))
     print(json.dumps(payload["draft"], indent=2, ensure_ascii=False))
     if payload["last_review"]:
         print("\nlast review:", json.dumps(payload["last_review"], ensure_ascii=False))
@@ -32,9 +37,14 @@ def _report(result: dict, thread_id: str) -> None:
 
 
 def _compiled(settings: Settings, saver: SqliteSaver):
-    llm = LangChainLLM(settings.model)
+    models = Models(
+        planner=LangChainLLM(settings.model_planner),
+        writer=LangChainLLM(settings.model_writer),
+        critic=LangChainLLM(settings.model_critic),
+    )
     repo = GitHubClient(settings.github_token)
-    return build_graph(llm, repo, settings).compile(checkpointer=saver)
+    decider = JevClient(settings.typesafe_api_key) if settings.typesafe_api_key else NoDecider()
+    return build_graph(models, repo, decider, settings).compile(checkpointer=saver)
 
 
 def cmd_run(args: argparse.Namespace, settings: Settings) -> None:
@@ -60,7 +70,12 @@ def cmd_resume(args: argparse.Namespace, settings: Settings) -> None:
 
 def cmd_diagram(args: argparse.Namespace, settings: Settings) -> None:
     # Fakes are enough: the drawing only needs the graph's shape.
-    graph = build_graph(llm=None, repo=None, settings=settings).compile()  # type: ignore[arg-type]
+    graph = build_graph(
+        models=Models.single(None),  # type: ignore[arg-type]
+        repo=None,  # type: ignore[arg-type]
+        decider=NoDecider(),
+        settings=settings,
+    ).compile()
     mermaid = graph.get_graph().draw_mermaid()
     Path(args.out).write_text(mermaid)
     print(mermaid)
