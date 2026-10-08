@@ -132,7 +132,7 @@ func loadDotEnv(path string) {
 		}
 		value = strings.Trim(value, `"'`)
 		if _, set := os.LookupEnv(key); !set && value != "" {
-			os.Setenv(key, value)
+			_ = os.Setenv(key, value) // best effort: a .env is a convenience, not a contract
 		}
 	}
 }

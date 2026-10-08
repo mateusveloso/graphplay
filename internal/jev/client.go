@@ -15,9 +15,11 @@ import (
 	"time"
 )
 
+// Endpoint is the System One API; Model is pinned because thresholds are tuned against
+// one version and jev-preview moves.
 const (
 	Endpoint = "https://api.typesafe.ai/v1/systemone"
-	Model    = "jev-1.13.0" // pinned: thresholds are tuned against one version
+	Model    = "jev-1.13.0"
 )
 
 // Question is one typed question. Build them with Noul and Choice.
@@ -41,6 +43,7 @@ type Decider interface {
 	Decide(ctx context.Context, state string, questions map[string]Question) (map[string]Answer, error)
 }
 
+// Noul is a yes/no statement. The answer is P(yes); 0.5 means the model could not tell.
 func Noul(instructions, whenTrue, whenFalse string) Question {
 	return Question{
 		Type:         "noul",
@@ -49,6 +52,7 @@ func Noul(instructions, whenTrue, whenFalse string) Question {
 	}
 }
 
+// Choice picks one option (at most 255). Each value says when its key applies.
 func Choice(instructions string, options map[string]string) Question {
 	return Question{Type: "choice", Instructions: instructions, Criteria: options}
 }
@@ -60,6 +64,7 @@ type Client struct {
 	apiKey   string
 }
 
+// NewClient returns a Decider backed by the hosted API.
 func NewClient(apiKey string) *Client {
 	return &Client{
 		http:     &http.Client{Timeout: 15 * time.Second},
@@ -68,6 +73,7 @@ func NewClient(apiKey string) *Client {
 	}
 }
 
+// Decide implements Decider with one request; the API answers every question in parallel.
 func (c *Client) Decide(ctx context.Context, state string, questions map[string]Question) (map[string]Answer, error) {
 	body, err := json.Marshal(map[string]any{"model": Model, "state": state, "questions": questions})
 	if err != nil {
@@ -99,6 +105,7 @@ func (c *Client) Decide(ctx context.Context, state string, questions map[string]
 // None is the decider used when no API key is configured: every decision falls through.
 type None struct{}
 
+// Decide implements Decider by always declining to decide.
 func (None) Decide(context.Context, string, map[string]Question) (map[string]Answer, error) {
 	return nil, fmt.Errorf("jev: not configured")
 }

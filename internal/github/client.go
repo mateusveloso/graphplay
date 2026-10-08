@@ -39,6 +39,7 @@ type Client struct {
 	token string
 }
 
+// NewClient returns a client for api.github.com. The token is optional.
 func NewClient(token string) *Client {
 	return &Client{
 		http:  &http.Client{Timeout: 20 * time.Second},
@@ -72,6 +73,7 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+// Issue implements Repository.
 func (c *Client) Issue(ctx context.Context, owner, repo string, number int) (Issue, error) {
 	var raw struct {
 		Title  string `json:"title"`
@@ -99,6 +101,7 @@ type entry struct {
 	Content  string `json:"content"`
 }
 
+// Root implements Repository. Directories carry a trailing slash.
 func (c *Client) Root(ctx context.Context, owner, repo string) ([]string, error) {
 	var entries []entry
 	if err := c.get(ctx, fmt.Sprintf("/repos/%s/%s/contents/", owner, repo), nil, &entries); err != nil {
@@ -115,6 +118,7 @@ func (c *Client) Root(ctx context.Context, owner, repo string) ([]string, error)
 	return paths, nil
 }
 
+// File implements Repository. Asking for a directory returns its listing, one path per line.
 func (c *Client) File(ctx context.Context, owner, repo, path string) (string, error) {
 	var raw json.RawMessage
 	if err := c.get(ctx, fmt.Sprintf("/repos/%s/%s/contents/%s", owner, repo, path), nil, &raw); err != nil {
@@ -145,6 +149,7 @@ func (c *Client) File(ctx context.Context, owner, repo, path string) (string, er
 	return string(decoded), nil
 }
 
+// Search implements Repository with the code search API, which needs a token.
 func (c *Client) Search(ctx context.Context, owner, repo, query string) ([]string, error) {
 	var raw struct {
 		Items []struct {

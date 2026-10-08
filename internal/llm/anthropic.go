@@ -14,13 +14,21 @@ type Anthropic struct {
 	model  string
 }
 
+// NewAnthropic returns a Model bound to one Claude model id. An empty apiKey lets the SDK
+// resolve credentials itself (ANTHROPIC_API_KEY or a logged-in profile).
 func NewAnthropic(apiKey, model string) *Anthropic {
-	return &Anthropic{client: anthropic.NewClient(option.WithAPIKey(apiKey)), model: model}
+	var opts []option.RequestOption
+	if apiKey != "" {
+		opts = append(opts, option.WithAPIKey(apiKey))
+	}
+	return &Anthropic{client: anthropic.NewClient(opts...), model: model}
 }
 
+// Ask implements Model with one non-streaming request. 16k output tokens is the SDK's
+// safe ceiling before HTTP timeouts become a concern.
 func (a *Anthropic) Ask(ctx context.Context, system, user string, out any) error {
 	_, err := a.client.Beta.Messages.New(ctx, anthropic.BetaMessageNewParams{
-		Model:     anthropic.Model(a.model),
+		Model:     a.model,
 		MaxTokens: 16000,
 		System:    []anthropic.BetaTextBlockParam{{Text: system}},
 		Messages: []anthropic.BetaMessageParam{

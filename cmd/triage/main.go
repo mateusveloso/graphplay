@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 
 	"github.com/mateusveloso/graph-issue-triage/graph"
 	"github.com/mateusveloso/graph-issue-triage/internal/github"
@@ -27,12 +28,17 @@ import (
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	if err := run(ctx, os.Args[1:], os.Stdout); err != nil {
+	if err := runWithSignals(); err != nil {
 		fmt.Fprintln(os.Stderr, "triage:", err)
 		os.Exit(1)
 	}
+}
+
+// runWithSignals owns the context so that main can exit without skipping deferred work.
+func runWithSignals() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	return run(ctx, os.Args[1:], os.Stdout)
 }
 
 func run(ctx context.Context, args []string, out io.Writer) error {
@@ -148,14 +154,15 @@ func report(out io.Writer, cp *graph.Checkpoint[triage.State]) error {
 	if !ok {
 		return fmt.Errorf("unexpected pause payload %T", cp.Pause.Payload)
 	}
-	enc := json.NewEncoder(out)
-	enc.SetIndent("", "  ")
-	fmt.Fprintf(out, "\n=== draft for %s (critic rounds: %d) ===\n", payload.IssueRef, payload.CriticRounds)
-	if err := enc.Encode(payload); err != nil {
+	body, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "\nthread:  %s\n", cp.Thread)
-	fmt.Fprintf(out, "approve: triage resume %s -approve\n", cp.Thread)
-	fmt.Fprintf(out, "reject:  triage resume %s -reject \"what to change\"\n", cp.Thread)
-	return nil
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n=== draft for %s (critic rounds: %d) ===\n%s\n", payload.IssueRef, payload.CriticRounds, body)
+	fmt.Fprintf(&b, "\nthread:  %s\n", cp.Thread)
+	fmt.Fprintf(&b, "approve: triage resume %s -approve\n", cp.Thread)
+	fmt.Fprintf(&b, "reject:  triage resume %s -reject \"what to change\"\n", cp.Thread)
+	_, err = io.WriteString(out, b.String())
+	return err
 }

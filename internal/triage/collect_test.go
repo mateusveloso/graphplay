@@ -45,7 +45,7 @@ func TestCollectKeepsPlanOrderAndTurnsFailuresIntoEvidence(t *testing.T) {
 	if s.Evidence[0].Error == "" || s.Evidence[0].Content != "" {
 		t.Fatalf("a missing file must be an error item: %+v", s.Evidence[0])
 	}
-	if s.Evidence[1].Content != "[src/app.py]" {
+	if s.Evidence[1].Content != "src/app.py" {
 		t.Fatalf("search hits: %+v", s.Evidence[1])
 	}
 	if s.Evidence[2].Content != "# demo\n" {

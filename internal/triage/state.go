@@ -50,6 +50,8 @@ type Review struct {
 // Verdict is what check decided, computed in code from probabilities.
 type Verdict string
 
+// The three outcomes of check, in cost order of what happens next: a rejection costs one
+// more writer call, uncertainty costs the generative critic, a pass costs nothing.
 const (
 	VerdictReject    Verdict = "reject"
 	VerdictUncertain Verdict = "uncertain"

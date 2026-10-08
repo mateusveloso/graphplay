@@ -1,10 +1,12 @@
 package triage
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/sync/errgroup"
 
@@ -111,7 +113,7 @@ func fetch(ctx context.Context, repo github.Repository, issue *github.Issue, r E
 		case len(hits) == 0:
 			ev.Content = "(no matches)"
 		default:
-			ev.Content = fmt.Sprint(hits)
+			ev.Content = strings.Join(hits, "\n")
 		}
 	default:
 		ev.Error = "unknown request kind " + r.Kind
@@ -237,7 +239,7 @@ func gate(ctx context.Context, s *State) error {
 		return nil
 	}
 	s.Approved = false
-	s.reject("human", cmpOr(decision.Feedback, "rejected without feedback"))
+	s.reject("human", cmp.Or(decision.Feedback, "rejected without feedback"))
 	s.CriticRounds = 0 // a human rejection restarts the budget for the new draft
 	return nil
 }
@@ -260,11 +262,4 @@ func finalize(cfg Config) graph.Node[State] {
 		s.OutputPath = path
 		return nil
 	}
-}
-
-func cmpOr(value, fallback string) string {
-	if value != "" {
-		return value
-	}
-	return fallback
 }

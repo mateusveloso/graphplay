@@ -18,6 +18,10 @@ linters:
     - unconvert
     - prealloc
   settings:
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
     revive:
       rules:
         - name: exported

@@ -55,22 +55,25 @@ func describe(failed []rule, probs map[string]float64) string {
 	return strings.Join(parts, "; ")
 }
 
-// renderRubric prints probabilities in rule order so output is stable.
+// renderRubric prints probabilities in rule order so output is stable. Keys outside the
+// known rubric go last, sorted, so nothing is silently dropped.
 func renderRubric(probs map[string]float64) string {
+	known := make(map[string]bool, len(rubric))
 	parts := make([]string, 0, len(probs))
 	for _, r := range rubric {
+		known[r.name] = true
 		if p, ok := probs[r.name]; ok {
 			parts = append(parts, fmt.Sprintf("%s=%.2f", r.name, p))
 		}
 	}
-	// Any key outside the known rubric goes last, sorted, so nothing is silently dropped.
-	for _, k := range slices.Sorted(func(yield func(string) bool) {
-		for k := range probs {
-			if !slices.ContainsFunc(rubric, func(r rule) bool { return r.name == k }) && !yield(k) {
-				return
-			}
+	var extra []string
+	for k := range probs {
+		if !known[k] {
+			extra = append(extra, k)
 		}
-	}) {
+	}
+	slices.Sort(extra)
+	for _, k := range extra {
 		parts = append(parts, fmt.Sprintf("%s=%.2f", k, probs[k]))
 	}
 	return strings.Join(parts, ", ")
