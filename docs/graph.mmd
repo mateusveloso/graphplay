@@ -1,0 +1,28 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	load_issue(load_issue)
+	planner(planner)
+	collect(collect)
+	writer(writer)
+	critic(critic)
+	gate(gate)
+	finalize(finalize)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> load_issue;
+	collect --> writer;
+	critic -.-> gate;
+	critic -.-> writer;
+	gate -.-> finalize;
+	gate -.-> writer;
+	load_issue --> planner;
+	planner --> collect;
+	writer --> critic;
+	finalize --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

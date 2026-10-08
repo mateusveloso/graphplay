@@ -1,0 +1,42 @@
+[project]
+name = "graph-issue-triage"
+version = "0.1.0"
+description = "A small LangGraph example: the graph is the unit of engineering, the LLM is just a node."
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Mateus Veloso", email = "mateusveloso.developer@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "langchain>=1.4.3",
+    "langchain-anthropic>=1.7.5",
+    "langchain-openai>=1.7.0",
+    "langgraph>=1.2.14",
+    "langgraph-checkpoint-sqlite>=3.1.1",
+    "python-dotenv>=1.2.1",
+]
+
+[project.scripts]
+triage = "graph_issue_triage.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.25,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
