@@ -5,6 +5,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/mateusveloso/graphplay/internal/jev"
+	"github.com/mateusveloso/graphplay/internal/world"
 )
 
 func TestCodeAloneExploresTheCellarAndTheLargeModelOnlySolvesTheRiddle(t *testing.T) {
@@ -194,5 +197,48 @@ func TestCodeLooksForHiddenExitsBeforeAskingAnyModel(t *testing.T) {
 	}
 	if looked == 0 || !s.Map["gallery"].Looked {
 		t.Fatalf("code should have looked around the gallery: %+v", s.Ledger)
+	}
+}
+
+func TestARefusedExitIsReconsideredWhenTheInventoryChanges(t *testing.T) {
+	t.Parallel()
+	// The only way on is a dark room and the lantern is behind you. Code must refuse the
+	// dark exit, fetch the lantern, come back, get a fresh assessment and then go.
+	w := world.World{
+		ID: "lantern-behind", Start: "fork", GoalText: "Won.",
+		Items: map[string]world.Item{"lantern": {Name: "lantern"}},
+		Rooms: map[string]*world.Room{
+			"fork":   {Name: "Fork", Description: "Dark to the north; a closet south.", Exits: map[string]string{"north": "dark", "south": "closet"}},
+			"closet": {Name: "Closet", Description: "A lantern.", Items: []string{"lantern"}, Exits: map[string]string{"north": "fork"}},
+			"dark":   {Name: "Dark", Description: "Dark.", Dark: true, Death: "You fall.", Exits: map[string]string{"south": "fork", "north": "goal"}},
+			"goal":   {Name: "Goal", Description: "Gold.", Goal: true, Exits: map[string]string{"south": "dark"}},
+		},
+	}
+	// North is dangerous; the player is protected only once the state lists the lantern.
+	decider := &fakeDecider{answer: func(state string, qs map[string]jev.Question) map[string]jev.Answer {
+		out := make(map[string]jev.Answer, len(qs))
+		for key, q := range qs {
+			switch {
+			case q.Type == "choice":
+				out[key] = jev.Answer{Choice: "ordinary", Confidence: 0.8}
+			case key == "danger_north":
+				out[key] = noul(0.9)
+			case key == "protected_north" && strings.Contains(state, "Inventory: lantern"):
+				out[key] = noul(0.95)
+			default:
+				out[key] = noul(0.05)
+			}
+		}
+		return out
+	}}
+
+	_, cp := run(t, w, script(), decider, testConfig(t))
+
+	s := &cp.State
+	if !s.Won || s.Deaths != 0 {
+		t.Fatalf("want a clean win, got won=%v deaths=%d ledger=%+v", s.Won, s.Deaths, s.Ledger)
+	}
+	if h := s.Map["fork"].History; len(h) != 2 || h[0].Risk["north"] < 0.3 || h[1].Risk["north"] > 0.3 {
+		t.Fatalf("want two assessments of the fork, risky then safe, got %+v", h)
 	}
 }

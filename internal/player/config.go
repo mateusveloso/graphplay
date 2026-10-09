@@ -37,7 +37,8 @@ type Config struct {
 	TypeSafeAPIKey  string
 
 	// RiskThreshold is the P(lethal) at or above which code refuses to explore an exit on
-	// its own; models and humans may still choose it.
+	// its own; models and humans may still choose it. 0.3 came from the first live runs:
+	// unequipped exits that killed the player scored 0.45 to 0.54, equipped ones 0.02 to 0.14.
 	RiskThreshold float64
 
 	MaxTurns          int // hard stop, win or not
@@ -61,7 +62,7 @@ func FromEnv() Config {
 		DeepSeekAPIKey:    os.Getenv("DEEPSEEK_API_KEY"),
 		AnthropicAPIKey:   os.Getenv("ANTHROPIC_API_KEY"),
 		TypeSafeAPIKey:    os.Getenv("TYPESAFE_API_KEY"),
-		RiskThreshold:     envFloat("PLAY_RISK_THRESHOLD", 0.6),
+		RiskThreshold:     envFloat("PLAY_RISK_THRESHOLD", 0.3),
 		MaxTurns:          envInt("PLAY_MAX_TURNS", 60),
 		MaxDeaths:         envInt("PLAY_MAX_DEATHS", 3),
 		StuckTurns:        envInt("PLAY_STUCK_TURNS", 8),

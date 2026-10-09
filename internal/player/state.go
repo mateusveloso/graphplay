@@ -40,6 +40,18 @@ type Entry struct {
 	Died     bool   `json:"died,omitempty"`
 }
 
+// Assessment is one reading of a room by the decision model, with the inventory the player
+// carried at the time. The history is kept because the same tunnel is lethal without a
+// lantern and harmless with one, and the ledger should be able to show both numbers.
+type Assessment struct {
+	Turn      int                `json:"turn"`
+	Inventory []string           `json:"inventory"`
+	Kind      string             `json:"kind,omitempty"`
+	Danger    map[string]float64 `json:"danger"`
+	Protected map[string]float64 `json:"protected"`
+	Risk      map[string]float64 `json:"risk"`
+}
+
 // Known is what the player has learned about a room. Exits map a direction to the room it
 // led to, or "" while unexplored. Risk is P(lethal now) per direction, combined in code
 // from two decision-model answers: Danger (the text warns of something in that direction)
@@ -55,6 +67,7 @@ type Known struct {
 	AssessedWith []string           `json:"assessed_with,omitempty"`
 	Assessed     bool               `json:"assessed"`
 	Looked       bool               `json:"looked"`
+	History      []Assessment       `json:"history,omitempty"`
 }
 
 // Death is a command that killed the player in a room, with what the player carried. The

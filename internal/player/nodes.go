@@ -76,6 +76,10 @@ func assess(decider jev.Decider) graph.Node[State] {
 			k.Danger[dir], k.Protected[dir] = danger, protected
 			k.Risk[dir] = danger * (1 - protected)
 		}
+		k.History = append(k.History, Assessment{
+			Turn: s.Turn, Inventory: k.AssessedWith, Kind: k.Kind,
+			Danger: maps.Clone(k.Danger), Protected: maps.Clone(k.Protected), Risk: maps.Clone(k.Risk),
+		})
 		return nil
 	}
 }
@@ -306,13 +310,20 @@ func finalize(cfg Config) graph.Node[State] {
 
 // --- helpers on State that only the nodes need
 
+// safeUnexploredExit finds an exit of room worth walking through: unexplored, not ruled
+// out, and either judged safe or judged with an inventory the player no longer has. A
+// stale verdict is not a verdict; walking there triggers a fresh assessment on arrival.
 func (s *State) safeUnexploredExit(room string, cfg Config) (string, bool) {
 	k, ok := s.Map[room]
 	if !ok {
 		return "", false
 	}
+	stale := k.Assessed && !slices.Equal(k.AssessedWith, s.Obs.Inventory)
 	for _, dir := range slices.Sorted(maps.Keys(k.Exits)) {
-		if k.Exits[dir] == "" && k.Risk[dir] < cfg.RiskThreshold && !s.ruledOut(room, world.Go+" "+dir) {
+		if k.Exits[dir] != "" || s.ruledOut(room, world.Go+" "+dir) {
+			continue
+		}
+		if k.Risk[dir] < cfg.RiskThreshold || stale {
 			return dir, true
 		}
 	}

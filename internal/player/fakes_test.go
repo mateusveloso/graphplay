@@ -43,19 +43,20 @@ func (m *fakeModel) Ask(_ context.Context, _, _ string, out any) error {
 
 func (m *fakeModel) asked(out any) int { return m.calls[reflect.TypeOf(out)] }
 
-// fakeDecider answers with a function of the questions, so a test can say "every exit is
-// safe" or "west is lethal" without scripting call order.
+// fakeDecider answers with a function of the state and the questions, so a test can say
+// "every exit is safe", "west is lethal" or "protected once the state mentions a lantern"
+// without scripting call order.
 type fakeDecider struct {
-	answer func(qs map[string]jev.Question) map[string]jev.Answer
+	answer func(state string, qs map[string]jev.Question) map[string]jev.Answer
 	calls  int
 }
 
-func (d *fakeDecider) Decide(_ context.Context, _ string, qs map[string]jev.Question) (map[string]jev.Answer, error) {
+func (d *fakeDecider) Decide(_ context.Context, state string, qs map[string]jev.Question) (map[string]jev.Answer, error) {
 	d.calls++
 	if d.answer == nil {
 		return nil, fmt.Errorf("fake decider: no decision")
 	}
-	return d.answer(qs), nil
+	return d.answer(state, qs), nil
 }
 
 // riskBy answers every noul with the given probability per question key (default 0.05, so
@@ -63,7 +64,7 @@ func (d *fakeDecider) Decide(_ context.Context, _ string, qs map[string]jev.Ques
 // any choice. Keys are "danger_<dir>" and "protected_<dir>". Wrap with chooseExactly to
 // steer a choice.
 func riskBy(risk map[string]float64) *fakeDecider {
-	return &fakeDecider{answer: func(qs map[string]jev.Question) map[string]jev.Answer {
+	return &fakeDecider{answer: func(_ string, qs map[string]jev.Question) map[string]jev.Answer {
 		out := make(map[string]jev.Answer, len(qs))
 		for key, q := range qs {
 			switch q.Type {
@@ -152,9 +153,9 @@ func layers(s *State) map[Layer]int {
 }
 
 // chooseExactly wraps a decider answer so every choice question returns want.
-func chooseExactly(inner func(map[string]jev.Question) map[string]jev.Answer, want string) func(map[string]jev.Question) map[string]jev.Answer {
-	return func(qs map[string]jev.Question) map[string]jev.Answer {
-		out := inner(qs)
+func chooseExactly(inner func(string, map[string]jev.Question) map[string]jev.Answer, want string) func(string, map[string]jev.Question) map[string]jev.Answer {
+	return func(state string, qs map[string]jev.Question) map[string]jev.Answer {
+		out := inner(state, qs)
 		for key, q := range qs {
 			if q.Type == "choice" {
 				if _, ok := q.Criteria.(map[string]string)[want]; ok {
@@ -165,3 +166,5 @@ func chooseExactly(inner func(map[string]jev.Question) map[string]jev.Answer, wa
 		return out
 	}
 }
+
+func noul(p float64) jev.Answer { return jev.Answer{Noul: &p} }
