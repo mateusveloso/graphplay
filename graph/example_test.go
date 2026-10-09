@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/mateusveloso/graph-issue-triage/graph"
+	"github.com/mateusveloso/graphplay/graph"
 )
 
 type Order struct {

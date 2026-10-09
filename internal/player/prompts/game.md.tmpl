@@ -1,0 +1,16 @@
+{{define "report" -}}
+# {{.World}}: {{if .Won}}won{{else if .Stopped}}stopped by the human{{else}}not finished{{end}} in {{.Turn}} turns
+
+| layer | turns |
+|---|---|
+{{range .Summary}}| {{.Layer}} | {{.Turns}} |
+{{end}}
+Deaths: {{.Deaths}}
+
+## Turns
+
+| # | room | command | decided by | outcome |
+|---|---|---|---|---|
+{{range .Ledger}}| {{.Turn}} | {{.Room}} | `{{.Command}}` | {{.Layer}}{{if .Died}} (died, reloaded){{end}} | {{.Outcome}} |
+{{end}}
+{{- end}}

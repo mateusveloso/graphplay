@@ -3,4 +3,4 @@ bin/
 
 # local runtime state
 .env
-.triage/
+.play/

@@ -20,7 +20,7 @@ jobs:
       - run: go test -race -count=1 ./...
       - name: diagram is up to date
         run: |
-          go run ./cmd/triage diagram -out /tmp/graph.mmd > /dev/null
+          go run ./cmd/play diagram -out /tmp/graph.mmd > /dev/null
           diff -u docs/graph.mmd /tmp/graph.mmd
 
   lint:

@@ -1,0 +1,18 @@
+{{/* Blocks shared by more than one prompt. This file defines no "system" or "user". */}}
+{{define "situation" -}}
+You are in: {{.Obs.Name}}
+{{.Obs.Description}}
+
+Exits: {{join .Obs.Exits ", "}}
+Visible items: {{if .Obs.Items}}{{join .Obs.Items ", "}}{{else}}none{{end}}
+Inventory: {{if .Obs.Inventory}}{{join .Obs.Inventory ", "}}{{else}}empty{{end}}
+{{- with .Obs.Message}}
+Last outcome: {{.}}{{end}}
+{{- with .Obs.Riddle}}
+A riddle is posed: {{.}}{{end}}
+{{- end}}
+
+{{define "memory" -}}
+{{with index .Fatal .Obs.Room}}Commands that killed you here: {{join . ", "}}
+{{end}}{{with index .Tried .Obs.Room}}Commands that did nothing here: {{join . ", "}}
+{{end}}{{- end}}

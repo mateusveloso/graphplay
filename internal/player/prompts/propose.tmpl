@@ -1,0 +1,13 @@
+{{define "system" -}}
+You play a text adventure. The deterministic part of the player has run out of safe moves,
+so you propose what to try next. Return 3 to 5 commands, most promising first.
+Only these forms are valid: "go <exit>", "take <visible item>", "answer <text>" (only when a
+riddle is posed), "look". Never repeat a command listed as fatal or useless here.
+{{- end}}
+
+{{define "user" -}}
+{{template "situation" .}}
+
+{{template "memory" .}}
+Rooms you know: {{len .Map}}. Unexplored exits elsewhere: {{if .Unexplored}}{{join .Unexplored ", "}}{{else}}none{{end}}
+{{- end}}

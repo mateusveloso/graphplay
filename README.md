@@ -1,45 +1,50 @@
-# graph-issue-triage
+# graphplay
 
-A small, complete Go program built around one idea: **the graph is the unit of engineering;
-a model is just a node.**
+A Go program built around one idea: **the graph is the unit of engineering; a model is just a node.**
 
-It triages a public GitHub issue. Nine nodes, three kinds of model, one human gate. Every
-decision is made at the cheapest layer that can make it:
+The graph plays a text adventure. Every turn it decides the next command at the cheapest layer
+that can decide it, and writes down who decided. The final table is the point:
 
-| Layer | Cost | Used for |
+| layer | what it is | decides |
 |---|---|---|
-| **code** | free, deterministic | fetching, capping, validating citations, routing, rendering |
-| **decision model** ([TypeSafe Jev](https://typesafe.ai)) | cents per thousand calls; returns probabilities, cannot write | "which category?", "does this need code?", "is each rubric rule met?" |
-| **small generative model** | cheap | planning: bounded output, cheap to get slightly wrong |
-| **big generative model** | expensive | writing the triage, and judging only the drafts the cheaper layers could not settle |
+| **code** | deterministic, free | the map, the inventory, which exits are unexplored, the walk to the nearest frontier, what is legal, what killed us last time |
+| **decision model** ([TypeSafe Jev](https://typesafe.ai)) | probabilities, cannot write | reading the room's prose: what kind of place is this, is walking through that exit lethal right now; which of several proposals to try |
+| **small LLM** | cheap, bounded output | proposing candidate commands when code has no safe move left |
+| **large LLM** | real reading | the riddle on the carved door, and nothing else |
+| **human** | a gate, not a chat | after three deaths, eight idle turns or three wrong answers: the run pauses, saves, and waits |
+
+A clean run of the bundled world ends with something like "22 turns: 17 code, 3 decision model,
+1 small LLM, 1 large LLM". That number, not the game, is what this repository is about.
 
 ```mermaid
 graph TD;
 	__start__([start]):::first
-	load_issue(load_issue)
-	classify(classify)
-	planner(planner)
-	collect(collect)
-	writer(writer)
-	check(check)
-	critic(critic)
+	observe(observe)
+	assess(assess)
+	cheap_move(cheap_move)
+	propose(propose)
+	rank(rank)
+	solve(solve)
+	act(act)
 	gate(gate)
 	finalize(finalize)
 	__end__([end]):::last
-	__start__ --> load_issue;
-	load_issue --> classify;
-	classify -.-> planner;
-	classify -.-> writer;
-	planner --> collect;
-	collect --> writer;
-	writer --> check;
-	check -.-> critic;
-	check -.-> gate;
-	check -.-> writer;
-	critic -.-> gate;
-	critic -.-> writer;
+	__start__ --> observe;
+	observe -.-> assess;
+	observe -.-> cheap_move;
+	observe -.-> finalize;
+	observe -.-> gate;
+	observe -.-> solve;
+	assess --> cheap_move;
+	cheap_move -.-> act;
+	cheap_move -.-> propose;
+	propose --> rank;
+	rank -.-> act;
+	rank -.-> gate;
+	solve --> act;
+	act --> observe;
+	gate -.-> act;
 	gate -.-> finalize;
-	gate -.-> writer;
 	finalize --> __end__;
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0
@@ -47,119 +52,103 @@ graph TD;
 ```
 
 Dotted edges are decisions. Every one of them is a Go function reading typed state and a
-threshold from [`Config`](internal/triage/config.go). No prompt owns a loop bound.
+threshold from [`Config`](internal/player/config.go). No prompt owns a loop bound.
 
-## The graph runtime is under 500 lines, comments included, and it is yours
+## The runtime is under 500 lines, comments included, and it is yours
 
-There is no LangGraph for Go, and this repo does not try to be one. [`graph/`](graph/) is
-the whole control plane:
+There is no LangGraph for Go, and this repo does not try to be one. [`graph/`](graph/) is the
+whole control plane:
 
 - `Graph[S]`: named nodes, fixed `Edge`s, and `Route`s whose targets are declared so the
   diagram can draw them and the runner can reject a router that wanders off.
 - `Runner[S]`: executes nodes, checkpoints after every one, records how long each took.
-- `Interrupt[T](ctx, payload)`: pauses the run with a payload; on resume the node runs
-  again and receives a typed answer. A resume value of the wrong type is an error, not a panic.
-- `Store[S]`: `FileStore` writes one JSON file per thread (you can `cat` a run) with an
-  atomic rename; `MemoryStore` is for tests and round-trips through JSON on purpose.
+- `Interrupt[T](ctx, payload)`: pauses the run with a payload; on resume the node runs again
+  and receives a typed answer. A resume value of the wrong type is an error, not a panic.
+- `Store[S]`: `FileStore` writes one JSON file per thread with an atomic rename (a save game
+  you can `cat`); `MemoryStore` is for tests and round-trips through JSON on purpose.
 - `Mermaid()`: deterministic, so `docs/graph.mmd` is committed and CI diffs it.
 
-The package is generic over the state type and knows nothing about models, GitHub or
-issues. `graph/example_test.go` is a 30-line pipeline that pauses for approval.
+The package is generic over the state type and knows nothing about models or games.
+[`graph/example_test.go`](graph/example_test.go) is a 30-line pipeline that pauses for approval.
 
-## The nodes
+## The game
 
-| Node | Layer | What it does |
+[`internal/world`](internal/world/world.go) is a deterministic text-adventure engine, 250 lines,
+with worlds as JSON. It only ever reveals what a player sees: prose, exits, visible items. It never
+exposes the map, and dangers live in the prose ("from the west you hear slow, heavy breathing"),
+not in structured fields. That is what forces reading. Every game is replayable from its command
+log, which is why death is cheap: **reload is a replay without the fatal command.**
+
+The bundled world, [`cellar`](internal/world/worlds/cellar.json): seven rooms, a lantern, a coin,
+a passage that kills you in the dark, a troll who takes the coin or you, a door that asks a riddle,
+and a chest.
+
+## The player
+
+| node | layer | what it does |
 |---|---|---|
-| `load_issue` | code | Fetches the issue and the repo's top-level listing. |
-| `classify` | decision | One `choice` (category, with confidence) and one `noul` ("does answering need the code?"). Produces a `Prior`. |
-| `planner` | small LLM | Up to 3 hypotheses and the evidence requests to test them. Typed `Plan`. |
-| `collect` | code | Executes the plan against GitHub, concurrently with a bound, preserving order. Caps requests. A failed fetch is evidence, not an error. |
-| `writer` | big LLM | Writes the triage from issue + prior + evidence + every rejection so far. Typed `Triage`. |
-| `check` | code, then decision | First a validator: a draft that cites evidence never collected is rejected without any model. Then one `noul` per rubric rule. Code turns the probabilities into a verdict: `reject`, `pass` or `uncertain`. |
-| `critic` | big LLM | Generative judgment, paid only for `uncertain` drafts. Sees the rubric probabilities. |
-| `gate` | human | `Interrupt`. The run is checkpointed and stops. A person approves or rejects with feedback from the CLI, now or next week. |
-| `finalize` | code | Renders `triage.md` with the whole review trail. |
+| `observe` | code | replays the command log and refreshes what the player sees |
+| `assess` | decision | on a new room (or a changed inventory): one `choice` for the kind of place, one `noul` per exit for "walking through this now is lethal". Probabilities stored on the map. |
+| `cheap_move` | code | take what is visible; explore a safe unexplored exit; or walk the known map (BFS) towards the nearest room that still has one. Most turns end here. |
+| `propose` | small LLM | only when code has nothing: 3 to 5 candidate commands |
+| `rank` | code, then decision | drop illegal and already-failed candidates; one left needs no model; several: Jev picks |
+| `solve` | large LLM | a riddle is posed: answer it. The only node that needs real reading. |
+| `act` | code | run the command; learn where the exit led; on death, roll the log back one step and remember the command as fatal here |
+| `gate` | human | `Interrupt` with the screen and the reason; resume with a command or stop |
+| `finalize` | code | write `game.md`: the layer table and every turn |
 
-All nine live in [`internal/triage/nodes.go`](internal/triage/nodes.go); routing is in
-[`graph.go`](internal/triage/graph.go) next to it:
+Routing is in [`internal/player/graph.go`](internal/player/graph.go): a turn is triaged in
+priority order (game over; a human is owed a look; a riddle is posed; the room is new; code
+moves), and the expensive nodes only run when the cheap ones had nothing to say.
 
-- `classify -> writer` only when P(needs code) is at or below `SkipCodeBelow`; otherwise `-> planner`.
-- `check -> writer` on `reject` while the round budget lasts, `-> gate` on `pass` or when the
-  budget is exhausted, `-> critic` on `uncertain`.
-- `critic -> writer` on rejection within budget, `-> gate` otherwise.
-- `gate -> finalize` on approval; `-> writer` on rejection, with the human feedback appended to
-  the same `Reviews` list the validator, the rubric and the critic write to, and the budget reset.
-
-Prompts are `text/template` files in [`internal/triage/prompts/`](internal/triage/prompts/),
-embedded at build time. Each defines a `system` and a `user` block; a test asserts they never
-shadow each other.
-
-## The decision model
-
-Jev is not a chat model. You send a `state` and typed `questions`; it returns calibrated
-probabilities. Three question types: `noul` (a yes/no statement, answered with P(yes)),
-`choice` (one of up to 255 options, with per-option probabilities and a confidence), `score`
-(an ordered scale). It cannot write a sentence, which is the point: a node that can only
-decide cannot drift into doing the writer's job.
-
-Two places in this graph want a decision and nothing else:
-
-1. **Before any evidence**: what kind of issue is this, and do we need to read code at all?
-   The answer routes the graph. A confident "no code" saves the planner, the collector and
-   the GitHub calls.
-2. **After every draft**: is each rubric rule met? One `noul` per rule, never a combined
-   judgment. Code reads the probabilities against two thresholds. Clear fail: rejection with
-   feedback templated from the rule that failed. Clear pass: straight to the human. Anything
-   in between: the big model earns its price.
-
-Without `TYPESAFE_API_KEY` the decider returns an error and the graph takes the full
-generative path on every decision. Jev can never block a run. The client is
-[`internal/jev`](internal/jev/client.go) and the thresholds are in `Config`.
+Prompts are `text/template` files in [`internal/player/prompts/`](internal/player/prompts/),
+embedded at build time.
 
 ## Run it
 
 ```bash
 cp .env.example .env            # models per role, API keys, thresholds
-go run ./cmd/triage run octocat/Hello-World#1
+go run ./cmd/play run
 ```
 
-The run stops at the gate and prints the prior, the rubric probabilities, the draft and a
-thread id:
+The graph plays until it wins, hits the turn limit, or needs you:
 
 ```
+=== the graph needs you (the riddle resisted every attempt) ===
+{ "obs": { "name": "Carved Antechamber", ... }, "recent": [...], "summary": [...] }
+
 thread:  k3fj2m9qpz1a
-approve: triage resume k3fj2m9qpz1a -approve
-reject:  triage resume k3fj2m9qpz1a -reject "what to change"
+command: play resume k3fj2m9qpz1a -command "answer echo"
+stop:    play resume k3fj2m9qpz1a -stop
 ```
 
-Resume whenever you want, from any shell. State is one JSON file per thread under `.triage/runs/`.
+Resume whenever you want, from any shell. The save game is one JSON file per thread under
+`.play/runs/`. The report lands next to it as `game.md`.
 
-```bash
-go run ./cmd/triage resume k3fj2m9qpz1a -reject "say which function raises"
-go run ./cmd/triage resume k3fj2m9qpz1a -approve
-# written: .triage/runs/k3fj2m9qpz1a/triage.md
-```
-
-`go install ./cmd/triage` gives you a `triage` binary. `GITHUB_TOKEN` is optional, but code
-search and sane rate limits need one.
+Without `TYPESAFE_API_KEY` every exit is treated as safe: code explores everything, dies,
+reloads, remembers, and still wins. The ledger then shows what the decision model would have
+saved. Without `ANTHROPIC_API_KEY` the run fails at the first node that needs a generative
+model, which in the bundled world is the riddle.
 
 ## Why the shape matters
 
-- **Deterministic by default.** Four of nine nodes have no model in them, and every edge
-  decision is code. Fetching, capping, validating, routing and rendering never drift.
-- **Decide with a decider, write with a writer.** Classification and rubric checks are
-  probabilities read by code, not prose read by another model. The generative critic only
-  runs on what the probabilities could not settle.
-- **One model per role, not one model.** The planner is small because its output is bounded
-  and cheap to get slightly wrong. The writer and the critic are big because that is where
-  quality is paid for. Swapping either is a `.env` change.
-- **Humans are a gate, not a chat.** `Interrupt` pauses the graph with a checkpoint. Approval
-  is a resume with a typed value. Nothing is re-run; nothing is lost between processes.
-- **Fakes make it testable.** Nodes receive the models, the decider and the repository as
-  interfaces. The tests run the whole graph with scripted answers under the race detector in
-  well under a second: the skip-code route, the three rubric verdicts, the budget, the
-  validator short-circuit, the human rejection path, resume from disk by a second runner, and
-  the no-decider fallback.
+- **Deterministic by default.** Five of nine nodes have no model in them, and every edge
+  decision is code. The map, the legality filter and the reload never drift.
+- **Decide with a decider, generate with a generator.** Reading prose for risk is a judgment,
+  not a composition: it returns a probability that code compares to a threshold. Only the
+  riddle needs a sentence back.
+- **One model per role, not one model.** Proposing commands is bounded and cheap to get
+  wrong; solving a riddle is not. Swapping either is a `.env` change.
+- **Death is a slice operation.** Because the engine is a replay, reload is `log[:len-1]`
+  plus a note. No model is asked to "be more careful".
+- **Humans are a gate, not a chat.** `Interrupt` pauses the graph with a checkpoint. The
+  human's command runs through the same `act` node as everyone else's and is counted in the
+  same ledger.
+- **Fakes make it testable.** Nodes receive the models, the decider and the world as values or
+  interfaces. [`internal/player`](internal/player/) runs whole games with scripted answers
+  under the race detector in well under a second: a code-only win, death and reload, the risk
+  assessment preventing a death, the proposal path, the decision model choosing among
+  proposals, the riddle budget handing over to a human, the human stopping the run.
 
 ```bash
 make test       # go test -race ./...
@@ -170,16 +159,15 @@ make diagram    # regenerates docs/graph.mmd; CI fails if it drifts
 ## Layout
 
 ```
-cmd/triage/            CLI: run / resume / diagram
+cmd/play/              CLI: run / resume / diagram
 graph/                 the control plane: Graph, Runner, Interrupt, Store, Mermaid
-internal/triage/       the domain: State, nodes, routing, Config, prompts/*.tmpl
-internal/github/       Repository interface + api.github.com client
+internal/world/        the engine and its worlds/*.json
+internal/player/       the agent: State, nodes, routing, Config, prompts/*.tmpl
 internal/jev/          Decider interface + System One client + question builders
 internal/llm/          Model interface + Anthropic structured-output adapter
 docs/graph.mmd         generated
 ```
 
-Dependencies: the official Anthropic Go SDK and `golang.org/x/sync`. Everything else is the
-standard library.
+Dependencies: the official Anthropic Go SDK. Everything else is the standard library.
 
 MIT.

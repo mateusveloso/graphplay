@@ -1,0 +1,311 @@
+// Package world is a small, deterministic text-adventure engine.
+//
+// It is the "operation" the graph plays against: it only ever reveals what a player
+// would see (prose, exits, visible items), it never exposes the map, and every run is
+// fully replayable from its command log. That last property is what makes death cheap:
+// reload is a replay without the fatal command.
+package world
+
+import (
+	"embed"
+	"encoding/json"
+	"fmt"
+	"io/fs"
+	"maps"
+	"slices"
+	"strings"
+)
+
+//go:embed worlds/*.json
+var worlds embed.FS
+
+// Item is something a player can carry.
+type Item struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// Hazard kills a player who enters without the required item.
+type Hazard struct {
+	Requires string `json:"requires"`
+	Consumes bool   `json:"consumes"`
+	Pass     string `json:"pass"`
+	Death    string `json:"death"`
+}
+
+// Lock bars an exit until its riddle is answered.
+type Lock struct {
+	Riddle string `json:"riddle"`
+	Answer string `json:"answer"`
+	Closed string `json:"closed"`
+	Opened string `json:"opened"`
+}
+
+// Room is one location. Dangers live in prose and in these fields; the player sees prose.
+type Room struct {
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Exits       map[string]string `json:"exits"`
+	Items       []string          `json:"items,omitempty"`
+	Dark        bool              `json:"dark,omitempty"`
+	Death       string            `json:"death,omitempty"`
+	Hazard      *Hazard           `json:"hazard,omitempty"`
+	Locks       map[string]Lock   `json:"locks,omitempty"`
+	Goal        bool              `json:"goal,omitempty"`
+}
+
+// World is the static definition of a game.
+type World struct {
+	ID       string           `json:"id"`
+	Start    string           `json:"start"`
+	GoalText string           `json:"goal_text"`
+	Items    map[string]Item  `json:"items"`
+	Rooms    map[string]*Room `json:"rooms"`
+}
+
+// Load reads an embedded world by id.
+func Load(id string) (World, error) {
+	data, err := fs.ReadFile(worlds, "worlds/"+id+".json")
+	if err != nil {
+		return World{}, fmt.Errorf("world %q: %w", id, err)
+	}
+	var w World
+	if err := json.Unmarshal(data, &w); err != nil {
+		return World{}, fmt.Errorf("world %q: %w", id, err)
+	}
+	return w, w.validate()
+}
+
+// Available lists the embedded world ids.
+func Available() []string {
+	entries, _ := fs.ReadDir(worlds, "worlds")
+	ids := make([]string, 0, len(entries))
+	for _, e := range entries {
+		ids = append(ids, strings.TrimSuffix(e.Name(), ".json"))
+	}
+	return ids
+}
+
+func (w World) validate() error {
+	if _, ok := w.Rooms[w.Start]; !ok {
+		return fmt.Errorf("start room %q does not exist", w.Start)
+	}
+	for id, r := range w.Rooms {
+		for dir, to := range r.Exits {
+			if _, ok := w.Rooms[to]; !ok {
+				return fmt.Errorf("room %q exit %s points to unknown room %q", id, dir, to)
+			}
+		}
+		for dir := range r.Locks {
+			if _, ok := r.Exits[dir]; !ok {
+				return fmt.Errorf("room %q locks an exit it does not have: %s", id, dir)
+			}
+		}
+		for _, it := range r.Items {
+			if _, ok := w.Items[it]; !ok {
+				return fmt.Errorf("room %q holds unknown item %q", id, it)
+			}
+		}
+	}
+	return nil
+}
+
+// Command is one player action.
+type Command struct {
+	Verb string `json:"verb"`
+	Arg  string `json:"arg,omitempty"`
+}
+
+// Verbs the engine understands.
+const (
+	Go     = "go"
+	Take   = "take"
+	Answer = "answer"
+	Look   = "look"
+)
+
+// Parse reads "go north", "take lantern", "answer echo", "look".
+func Parse(s string) (Command, error) {
+	verb, arg, _ := strings.Cut(strings.TrimSpace(strings.ToLower(s)), " ")
+	arg = strings.TrimSpace(arg)
+	switch verb {
+	case Go, Take, Answer:
+		if arg == "" {
+			return Command{}, fmt.Errorf("%q needs an argument", verb)
+		}
+		return Command{Verb: verb, Arg: arg}, nil
+	case Look:
+		return Command{Verb: Look}, nil
+	}
+	return Command{}, fmt.Errorf("unknown command %q", s)
+}
+
+func (c Command) String() string {
+	if c.Arg == "" {
+		return c.Verb
+	}
+	return c.Verb + " " + c.Arg
+}
+
+// Observation is everything a player can see after a command. Nothing else leaks.
+type Observation struct {
+	Room        string   `json:"room"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Exits       []string `json:"exits"`
+	Items       []string `json:"items,omitempty"`
+	Inventory   []string `json:"inventory,omitempty"`
+	Message     string   `json:"message,omitempty"`
+	Riddle      string   `json:"riddle,omitempty"`
+	Dead        bool     `json:"dead,omitempty"`
+	Won         bool     `json:"won,omitempty"`
+}
+
+// Game is a running instance of a World.
+type Game struct {
+	world     World
+	room      string
+	inventory []string
+	items     map[string][]string // room -> items still there
+	unlocked  map[string]bool     // "room/dir"
+	riddle    string              // riddle currently posed, if any
+	message   string
+	dead      bool
+	won       bool
+	log       []Command
+}
+
+// New starts a game at the world's start room.
+func New(w World) *Game {
+	g := &Game{world: w, room: w.Start, items: make(map[string][]string, len(w.Rooms)), unlocked: make(map[string]bool)}
+	for id, r := range w.Rooms {
+		g.items[id] = slices.Clone(r.Items)
+	}
+	return g
+}
+
+// Replay rebuilds a game by applying commands to a fresh one.
+func Replay(w World, commands []Command) *Game {
+	g := New(w)
+	for _, c := range commands {
+		g.Do(c)
+	}
+	return g
+}
+
+// Log returns the commands applied so far.
+func (g *Game) Log() []Command { return slices.Clone(g.log) }
+
+// Over reports whether the game has ended, by death or victory.
+func (g *Game) Over() bool { return g.dead || g.won }
+
+// Observe describes the current situation.
+func (g *Game) Observe() Observation {
+	r := g.world.Rooms[g.room]
+	obs := Observation{
+		Room:        g.room,
+		Name:        r.Name,
+		Description: r.Description,
+		Exits:       slices.Sorted(maps.Keys(r.Exits)),
+		Items:       slices.Clone(g.items[g.room]),
+		Inventory:   slices.Clone(g.inventory),
+		Message:     g.message,
+		Riddle:      g.riddle,
+		Dead:        g.dead,
+		Won:         g.won,
+	}
+	return obs
+}
+
+// Do applies one command and returns the resulting observation. Commands after the game
+// is over are recorded but have no effect.
+func (g *Game) Do(c Command) Observation {
+	g.log = append(g.log, c)
+	g.message = ""
+	if g.Over() {
+		return g.Observe()
+	}
+	switch c.Verb {
+	case Look:
+	case Take:
+		g.take(c.Arg)
+	case Answer:
+		g.answer(c.Arg)
+	case Go:
+		g.move(c.Arg)
+	default:
+		g.message = fmt.Sprintf("You cannot %q.", c.String())
+	}
+	return g.Observe()
+}
+
+func (g *Game) take(item string) {
+	here := g.items[g.room]
+	i := slices.Index(here, item)
+	if i < 0 {
+		g.message = fmt.Sprintf("There is no %s here.", item)
+		return
+	}
+	g.items[g.room] = slices.Delete(here, i, i+1)
+	g.inventory = append(g.inventory, item)
+	g.message = fmt.Sprintf("Taken: %s.", g.world.Items[item].Name)
+}
+
+func (g *Game) answer(text string) {
+	r := g.world.Rooms[g.room]
+	for dir, lock := range r.Locks {
+		key := g.room + "/" + dir
+		if g.unlocked[key] {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(text), lock.Answer) {
+			g.unlocked[key] = true
+			g.riddle = ""
+			g.message = lock.Opened
+			return
+		}
+		g.message = "Nothing happens."
+		return
+	}
+	g.message = "There is nothing here to answer."
+}
+
+func (g *Game) move(dir string) {
+	r := g.world.Rooms[g.room]
+	to, ok := r.Exits[dir]
+	if !ok {
+		g.message = "You cannot go that way."
+		return
+	}
+	if lock, locked := r.Locks[dir]; locked && !g.unlocked[g.room+"/"+dir] {
+		g.riddle = lock.Riddle
+		g.message = lock.Closed
+		return
+	}
+	dest := g.world.Rooms[to]
+	if dest.Dark && !slices.Contains(g.inventory, "lantern") {
+		g.die(dest.Death)
+		return
+	}
+	if h := dest.Hazard; h != nil {
+		i := slices.Index(g.inventory, h.Requires)
+		if i < 0 {
+			g.die(h.Death)
+			return
+		}
+		if h.Consumes {
+			g.inventory = slices.Delete(g.inventory, i, i+1)
+		}
+		g.message = h.Pass
+	}
+	g.room, g.riddle = to, ""
+	if dest.Goal {
+		g.won = true
+		g.message = g.world.GoalText
+	}
+}
+
+func (g *Game) die(text string) {
+	g.dead = true
+	g.message = text
+}

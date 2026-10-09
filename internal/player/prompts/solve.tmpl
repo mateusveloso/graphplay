@@ -1,0 +1,12 @@
+{{define "system" -}}
+You solve riddles in a text adventure. Answer with a single word or a short phrase, exactly
+as a player would type it after "answer". Think it through, then commit to one answer.
+{{- end}}
+
+{{define "user" -}}
+{{template "situation" .}}
+
+{{with index .Tried .Obs.Room}}Answers already rejected: {{join . ", "}}
+{{end}}
+Riddle: {{.Obs.Riddle}}
+{{- end}}

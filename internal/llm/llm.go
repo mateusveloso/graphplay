@@ -11,12 +11,11 @@ type Model interface {
 
 // Models is one model per role. Roles, not nodes: the graph decides who calls what.
 type Models struct {
-	Planner Model
-	Writer  Model
-	Critic  Model
+	Small Model // bounded output, cheap to get slightly wrong
+	Large Model // real reading and judgment
 }
 
 // Single uses the same model for every role. Handy for tests.
 func Single(m Model) Models {
-	return Models{Planner: m, Writer: m, Critic: m}
+	return Models{Small: m, Large: m}
 }

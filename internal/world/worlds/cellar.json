@@ -1,0 +1,102 @@
+{
+  "id": "cellar",
+  "start": "entrance",
+  "goal_text": "You lift the lid of the chest. Gold, finally. The cellar has given up its secret.",
+  "items": {
+    "lantern": {
+      "name": "brass lantern",
+      "description": "A brass lantern, still half full of oil."
+    },
+    "coin": {
+      "name": "copper coin",
+      "description": "A dull copper coin, worn smooth."
+    }
+  },
+  "rooms": {
+    "entrance": {
+      "name": "Entrance Hall",
+      "description": "A damp stone hall. Moss climbs the walls and water drips somewhere you cannot see. A brass lantern hangs from a hook by the stairs. Passages lead north and east.",
+      "exits": {
+        "north": "corridor",
+        "east": "storeroom"
+      },
+      "items": [
+        "lantern"
+      ]
+    },
+    "storeroom": {
+      "name": "Storeroom",
+      "description": "Broken crates and the smell of old grain. Something glints between the boards: a copper coin. The only way out is back west.",
+      "exits": {
+        "west": "entrance"
+      },
+      "items": [
+        "coin"
+      ]
+    },
+    "corridor": {
+      "name": "Long Corridor",
+      "description": "A long corridor of fitted stone. To the north the passage opens into utter darkness; a cold draft comes from it. From the west you hear slow, heavy breathing and the clink of a chain. South leads back to the hall.",
+      "exits": {
+        "north": "dark_passage",
+        "west": "troll_bridge",
+        "south": "entrance"
+      }
+    },
+    "dark_passage": {
+      "name": "Dark Passage",
+      "description": "Your light pushes the darkness back a few paces. The floor is uneven and broken; without the lantern you would never have seen the pit yawning to your left. The passage continues north. South is the corridor.",
+      "dark": true,
+      "death": "You step into the darkness. The floor is not where your foot expects it to be. You fall for a long time.",
+      "exits": {
+        "north": "riddle_room",
+        "south": "corridor"
+      }
+    },
+    "troll_bridge": {
+      "name": "Troll Bridge",
+      "description": "A rope bridge over a black chasm, and on it a troll the size of a cart, holding out a hand the size of a shovel. Beyond him, east, a doorway. The corridor is back east.",
+      "hazard": {
+        "requires": "coin",
+        "consumes": true,
+        "pass": "The troll weighs the coin, grunts, and steps aside.",
+        "death": "The troll does not take promises. He takes you."
+      },
+      "exits": {
+        "east": "corridor",
+        "north": "armory"
+      }
+    },
+    "armory": {
+      "name": "Old Armory",
+      "description": "Racks of rusted weapons too brittle to lift. Dust and nothing else. The bridge is back south.",
+      "exits": {
+        "south": "troll_bridge"
+      }
+    },
+    "riddle_room": {
+      "name": "Carved Antechamber",
+      "description": "A small round room. To the east, a stone door carved with a mouth and two ears, and words cut above it. South is the dark passage you came from.",
+      "exits": {
+        "south": "dark_passage",
+        "east": "treasury"
+      },
+      "locks": {
+        "east": {
+          "riddle": "I speak without a mouth and hear without ears. I have no body, but I come alive with the wind. What am I?",
+          "answer": "echo",
+          "closed": "The carved mouth speaks: a riddle, and the door does not move.",
+          "opened": "The carved mouth closes. The door swings inward."
+        }
+      }
+    },
+    "treasury": {
+      "name": "Treasury",
+      "description": "A low vault and, in its centre, a chest.",
+      "goal": true,
+      "exits": {
+        "west": "riddle_room"
+      }
+    }
+  }
+}

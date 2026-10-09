@@ -1,8 +1,0 @@
-{{/* Blocks shared by more than one prompt. This file defines no "system" or "user". */}}
-{{define "evidence" -}}
-{{if not .}}(none)
-{{end}}{{range .}}### {{.Kind}}: {{.Target}}
-{{if .Error}}(error: {{.Error}}){{else}}{{.Content}}{{end}}
-
-{{end}}
-{{- end}}

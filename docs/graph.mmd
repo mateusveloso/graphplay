@@ -1,29 +1,31 @@
 graph TD;
 	__start__([start]):::first
-	load_issue(load_issue)
-	classify(classify)
-	planner(planner)
-	collect(collect)
-	writer(writer)
-	check(check)
-	critic(critic)
+	observe(observe)
+	assess(assess)
+	cheap_move(cheap_move)
+	propose(propose)
+	rank(rank)
+	solve(solve)
+	act(act)
 	gate(gate)
 	finalize(finalize)
 	__end__([end]):::last
-	__start__ --> load_issue;
-	load_issue --> classify;
-	classify -.-> planner;
-	classify -.-> writer;
-	planner --> collect;
-	collect --> writer;
-	writer --> check;
-	check -.-> critic;
-	check -.-> gate;
-	check -.-> writer;
-	critic -.-> gate;
-	critic -.-> writer;
+	__start__ --> observe;
+	observe -.-> assess;
+	observe -.-> cheap_move;
+	observe -.-> finalize;
+	observe -.-> gate;
+	observe -.-> solve;
+	assess --> cheap_move;
+	cheap_move -.-> act;
+	cheap_move -.-> propose;
+	propose --> rank;
+	rank -.-> act;
+	rank -.-> gate;
+	solve --> act;
+	act --> observe;
+	gate -.-> act;
 	gate -.-> finalize;
-	gate -.-> writer;
 	finalize --> __end__;
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0
