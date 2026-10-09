@@ -24,13 +24,19 @@ const DeepSeekBaseURL = "https://api.deepseek.com"
 // json_object) but not a schema, so the schema derived from the struct goes into the
 // system prompt and the reply is validated by unmarshalling into the struct.
 type OpenAICompat struct {
-	http     *http.Client
-	baseURL  string
-	apiKey   string
-	model    string
-	meter    *metrics.Meter
-	thinking *bool // nil: provider default; false: off (bounded tasks); true: on
+	http      *http.Client
+	baseURL   string
+	apiKey    string
+	model     string
+	meter     *metrics.Meter
+	thinking  *bool // nil: provider default; false: off (bounded tasks); true: on
+	maxTokens int
 }
+
+// defaultMaxTokens is enough for any typed answer in this program when the model does not
+// reason first. A reasoning model spends the same budget on its thinking, so a role that
+// keeps thinking on asks for more with WithMaxTokens.
+const defaultMaxTokens = 4096
 
 // WithoutThinking turns the provider's reasoning mode off for this model. A bounded,
 // structured task does not need it, and a reasoning model that thinks inside the completion
@@ -44,12 +50,19 @@ func (c *OpenAICompat) WithoutThinking() *OpenAICompat {
 // NewOpenAICompat returns a Model bound to one model id on one endpoint. A nil meter is fine.
 func NewOpenAICompat(baseURL, apiKey, model string, meter *metrics.Meter) *OpenAICompat {
 	return &OpenAICompat{
-		http:    &http.Client{Timeout: 120 * time.Second},
-		baseURL: strings.TrimRight(baseURL, "/"),
-		apiKey:  apiKey,
-		model:   model,
-		meter:   meter,
+		http:      &http.Client{Timeout: 180 * time.Second},
+		baseURL:   strings.TrimRight(baseURL, "/"),
+		apiKey:    apiKey,
+		model:     model,
+		meter:     meter,
+		maxTokens: defaultMaxTokens,
 	}
+}
+
+// WithMaxTokens sets the completion budget, reasoning included where the model reasons.
+func (c *OpenAICompat) WithMaxTokens(n int) *OpenAICompat {
+	c.maxTokens = n
+	return c
 }
 
 // NewDeepSeek is NewOpenAICompat pointed at DeepSeek.
@@ -133,7 +146,7 @@ func (c *OpenAICompat) ask(ctx context.Context, system, user, schema string, out
 		Model:          c.model,
 		Messages:       []chatMessage{{Role: "system", Content: system}, {Role: "user", Content: user}},
 		ResponseFormat: format{Type: "json_object"},
-		MaxTokens:      4096,
+		MaxTokens:      c.maxTokens,
 	}
 	if c.thinking != nil {
 		req0.Thinking = &thinking{Type: "disabled"}

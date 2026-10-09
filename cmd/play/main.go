@@ -88,7 +88,7 @@ func generative(cfg player.Config, meter *metrics.Meter) (llm.Models, error) {
 		}
 		return llm.Models{
 			Small: llm.NewDeepSeek(cfg.DeepSeekAPIKey, cfg.ModelProposer, meter).WithoutThinking(),
-			Large: llm.NewDeepSeek(cfg.DeepSeekAPIKey, cfg.ModelSolver, meter),
+			Large: llm.NewDeepSeek(cfg.DeepSeekAPIKey, cfg.ModelSolver, meter).WithMaxTokens(16384),
 		}, nil
 	case player.ProviderAnthropic:
 		return llm.Models{
