@@ -47,10 +47,17 @@ func TestDeathReloadsAndIsRemembered(t *testing.T) {
 	if got := s.Fatal["start"]; len(got) != 1 || got[0].Command != "go east" {
 		t.Fatalf("fatal command not remembered: %v", s.Fatal)
 	}
-	if len(s.Commands) != 1 || s.Commands[0].String() != "go north" {
-		t.Fatalf("the fatal command must be rolled back from the log: %v", s.Commands)
+	for _, c := range s.Commands {
+		if c.String() == "go east" {
+			t.Fatalf("the fatal command must be rolled back from the log: %v", s.Commands)
+		}
 	}
-	if !s.Ledger[0].Died || !s.Ledger[1].Progress {
+	var died, won bool
+	for _, e := range s.Ledger {
+		died = died || e.Died
+		won = won || (e.Command == "go north" && e.Progress)
+	}
+	if !died || !won {
 		t.Fatalf("want a recorded death then a winning move, got %+v", s.Ledger)
 	}
 }
@@ -121,7 +128,7 @@ func TestSmallModelProposesWhenCodeHasNoSafeMoveAndRankFiltersNonsense(t *testin
 	if !cp.State.Won {
 		t.Fatalf("want a win via the proposal, got %+v", cp.State.Ledger)
 	}
-	// Code looks around first (free), then admits it has nothing and the proposal wins.
+	// Code looks around on arrival, then admits it has nothing and the proposal wins.
 	last := cp.State.Ledger[len(cp.State.Ledger)-1]
 	if last.Layer != LayerSmall || last.Command != "go north" {
 		t.Fatalf("want the small model credited with 'go north', got %+v", last)
@@ -131,7 +138,7 @@ func TestSmallModelProposesWhenCodeHasNoSafeMoveAndRankFiltersNonsense(t *testin
 func TestDecisionModelPicksAmongSeveralLegalProposals(t *testing.T) {
 	t.Parallel()
 	decider := riskBy(map[string]float64{"danger_east": 0.9, "danger_north": 0.9})
-	decider.answer = chooseExactly(decider.answer, "go north")
+	decider.answer = chooseExactly(decider.answer, "go north") // confidence 0.9: no escalation
 	model := script(Proposal{Commands: []string{"go east", "go north"}})
 
 	_, cp := run(t, tiny(), model, decider, testConfig(t))
@@ -142,12 +149,34 @@ func TestDecisionModelPicksAmongSeveralLegalProposals(t *testing.T) {
 	if last := cp.State.Ledger[len(cp.State.Ledger)-1]; last.Layer != LayerDecision || !strings.Contains(last.Note, "over 2 proposals") {
 		t.Fatalf("want the decision model credited, got %+v", last)
 	}
+	if model.asked(Pick{}) != 0 {
+		t.Fatal("a confident decision must not be escalated")
+	}
+}
+
+func TestAnUnsureDecisionIsEscalatedToTheLargeModel(t *testing.T) {
+	t.Parallel()
+	decider := riskBy(map[string]float64{"danger_east": 0.9, "danger_north": 0.9})
+	decider.answer = chooseExactly(decider.answer, "go east") // wrong, and at 0.9 it would die
+	model := script(Proposal{Commands: []string{"go east", "go north"}}, Pick{Command: "go north", Reasoning: "the inscription"})
+	cfg := testConfig(t)
+	cfg.RankMinConfidence = 0.95 // force the escalation
+
+	_, cp := run(t, tiny(), model, decider, cfg)
+
+	if !cp.State.Won || cp.State.Deaths != 0 {
+		t.Fatalf("want a clean win through the large model, got %+v", cp.State.Ledger)
+	}
+	last := cp.State.Ledger[len(cp.State.Ledger)-1]
+	if last.Layer != LayerLarge || !strings.Contains(last.Note, "unsure (0.90)") || !strings.Contains(last.Note, "inscription") {
+		t.Fatalf("want the large model credited with its reasoning, got %+v", last)
+	}
 }
 
 func TestStuckTurnsHandControlToAHuman(t *testing.T) {
 	t.Parallel()
 	cfg := testConfig(t)
-	cfg.StuckTurns = 2
+	cfg.StuckTurns = 3 // the first look counts as progress; the useless proposals do not
 	// Nothing is lethal, but the proposal keeps repeating useless looks until patience runs out.
 	model := script(Proposal{Commands: []string{"look"}}, Proposal{Commands: []string{"look"}}, Proposal{Commands: []string{"look"}})
 	decider := riskBy(map[string]float64{"danger_east": 0.9, "danger_north": 0.9})
@@ -197,6 +226,9 @@ func TestCodeLooksForHiddenExitsBeforeAskingAnyModel(t *testing.T) {
 	}
 	if looked == 0 || !s.Map["gallery"].Looked {
 		t.Fatalf("code should have looked around the gallery: %+v", s.Ledger)
+	}
+	if by[LayerCode] > 40 {
+		t.Fatalf("a look per room must not turn into a tour: %d code turns", by[LayerCode])
 	}
 }
 

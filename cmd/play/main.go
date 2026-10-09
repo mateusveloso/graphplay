@@ -87,7 +87,7 @@ func generative(cfg player.Config, meter *metrics.Meter) (llm.Models, error) {
 			return llm.Models{}, errors.New("DEEPSEEK_API_KEY is not set")
 		}
 		return llm.Models{
-			Small: llm.NewDeepSeek(cfg.DeepSeekAPIKey, cfg.ModelProposer, meter),
+			Small: llm.NewDeepSeek(cfg.DeepSeekAPIKey, cfg.ModelProposer, meter).WithoutThinking(),
 			Large: llm.NewDeepSeek(cfg.DeepSeekAPIKey, cfg.ModelSolver, meter),
 		}, nil
 	case player.ProviderAnthropic:

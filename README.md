@@ -17,7 +17,7 @@ A clean run of the bundled `caverns` world ends like this:
 
 | player | won | turns | deaths | large-model calls | decision-model calls |
 |---|---|---|---|---|---|
-| **the graph** | yes | 29 | 0 | 2 (722 in / 881 out tokens, 13 s) | 18 (13k in / 2.3k out, 5.7 s) |
+| **the graph** | yes | 41 | 0 | 3 (1.1k in / 3.9k out tokens, 58 s) + 1 small-model call | 21 (16k in / 2.7k out, 5 s) |
 | one large LLM alone, full transcript as memory | yes | 41 | 1 | 42 (29k in / 27k out, 468 s) | 0 |
 | one decision model alone, over the legal commands | no | 34 (stopped at 3 deaths) | 3 | 0 | 34 (17k in, 10 s) |
 
@@ -25,8 +25,9 @@ Same world, same turn budget, same mercy on death (a reload). The LLM alone does
 also spends a dozen turns walking between the same two rooms, writes 27 thousand tokens of
 reasoning to do so, and pays for a large-model call on every turn (another run of it took 49
 turns). The decision model alone cannot type an answer to a riddle, so it never
-can. The graph puts each decision where it is cheapest and asks the large model twice, for the
-two riddles. Those numbers, not the game, are what this repository is about. The reports are
+can. The graph puts each decision where it is cheapest and asks the large model three times: two
+riddles, and one fork where the decision model was not sure which arch to take (confidence
+0.13) and the large model read the inscription. Those numbers, not the game, are what this repository is about. The reports are
 written by `play run` and `play baseline`; see "Run it".
 
 ```mermaid
@@ -95,8 +96,9 @@ log, which is why death is cheap: **reload is a replay without the fatal command
 
 Two bundled worlds. [`cellar`](internal/world/worlds/cellar.json): seven rooms, a lantern in the
 first one, a passage that kills you in the dark, a troll who takes the coin or you, a riddle door,
-a chest. [`caverns`](internal/world/worlds/caverns.json): eleven rooms, the lantern off the direct
-path, an exit that only `look` reveals, two riddles, a toll bridge, and a chest. The cellar is
+a chest. [`caverns`](internal/world/worlds/caverns.json): thirteen rooms, the lantern off the
+direct path, an exit that only `look` reveals, two riddles, a toll bridge, a fork where both
+arches look lethal and only an inscription says which one is, and a chest. The cellar is
 good for a first run; the caverns are where the layers earn their keep.
 
 ## The player
@@ -105,9 +107,9 @@ good for a first run; the caverns are where the layers earn their keep.
 |---|---|---|
 | `observe` | code | replays the command log and refreshes what the player sees |
 | `assess` | decision | on a new room, or the same room with a new inventory: one `choice` for the kind of place and, per exit, two `noul`s: "the text describes a lethal danger that way" and "the inventory covers it". Code combines them into `risk = danger × (1 − protected)` and keeps every assessment in the room's history. |
-| `cheap_move` | code | take what is visible; explore a safe unexplored exit; walk the known map (BFS) to the nearest room that still has one; when the frontier is gone, `look` in rooms not yet looked at. Most turns end here. |
+| `cheap_move` | code | take what is visible; `look` once on arriving in a room (the only way hidden exits appear); explore a safe unexplored exit; walk the known map (BFS) to the nearest room that still has one; when nothing safe is left, walk to the room with the refused exit and stop there. Most turns end here. |
 | `propose` | small LLM | only when code has nothing: 3 to 5 candidate commands |
-| `rank` | code, then decision | drop illegal and already-failed candidates; one left needs no model; several: Jev picks |
+| `rank` | code, decision, then large | drop illegal and already-failed candidates; one left needs no model; several: Jev picks; a pick below `RankMinConfidence` is escalated to the large model, which reads the prose and explains |
 | `solve` | large LLM | a riddle is posed: answer it. The only node that needs real reading. |
 | `act` | code | run the command; learn where the exit led; on death, roll the log back one step and remember the command as fatal here, with the inventory it was fatal with |
 | `gate` | human | `Interrupt` with the screen and the reason; resume with a command or stop |

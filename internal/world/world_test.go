@@ -74,6 +74,15 @@ func TestTrollTakesTheCoinOrThePlayer(t *testing.T) {
 	}
 }
 
+func TestAPaidTollStaysPaid(t *testing.T) {
+	t.Parallel()
+	g := New(cellar(t))
+	obs := play(t, g, "go east", "take coin", "go west", "go north", "go west", "go east", "go west")
+	if obs.Dead || obs.Room != "troll_bridge" {
+		t.Fatalf("crossing back over a paid bridge must be free: %+v", obs)
+	}
+}
+
 func TestWrongAnswerKeepsTheDoorShut(t *testing.T) {
 	t.Parallel()
 	g := New(cellar(t))
@@ -168,10 +177,25 @@ func TestCavernsIntendedSolution(t *testing.T) {
 	obs := play(t, New(w),
 		"go north", "go west", "take lantern", "go east", // lantern
 		"go east", "look", "go down", "go north", "answer footsteps", "go north", "take coin", // coin
-		"go south", "go up", "go west", "go north", "go north", "go north", // dark, troll, antechamber
-		"go east", "answer map", "go east",
+		"go south", "go up", "go west", "go north", "go north", "go north", // dark, troll, landing
+		"go east", "go east", "answer map", "go east", // the cup, the antechamber, the riddle
 	)
 	if !obs.Won {
 		t.Fatalf("want victory, got %+v", obs)
+	}
+}
+
+func TestTrapKillsRegardlessOfInventory(t *testing.T) {
+	t.Parallel()
+	w, err := Load("caverns")
+	if err != nil {
+		t.Fatal(err)
+	}
+	obs := play(t, New(w),
+		"go north", "go west", "take lantern", "go east",
+		"go east", "look", "go down", "go north", "answer footsteps", "go north", "take coin",
+		"go south", "go up", "go west", "go north", "go north", "go north", "go west")
+	if !obs.Dead || !strings.Contains(obs.Message, "skull keeps you") {
+		t.Fatalf("the skull arch must kill an equipped player too: %+v", obs)
 	}
 }

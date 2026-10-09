@@ -44,6 +44,7 @@ func (p prompt) system() string {
 var (
 	proposePrompt = mustPrompt("propose.tmpl")
 	solvePrompt   = mustPrompt("solve.tmpl")
+	pickPrompt    = mustPrompt("pick.tmpl")
 	assessPrompt  = mustPrompt("assess.tmpl")
 	reportPrompt  = mustPrompt("game.md.tmpl")
 )
@@ -51,6 +52,12 @@ var (
 // Proposal is the small model's typed output.
 type Proposal struct {
 	Commands []string `json:"commands" jsonschema:"minItems=1,maxItems=5" jsonschema_description:"Valid game commands, most promising first."`
+}
+
+// Pick is the large model's typed choice among candidates.
+type Pick struct {
+	Reasoning string `json:"reasoning"`
+	Command   string `json:"command" jsonschema_description:"Exactly one of the candidates, verbatim."`
 }
 
 // RiddleAnswer is the large model's typed output.

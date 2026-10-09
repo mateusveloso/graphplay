@@ -24,11 +24,21 @@ const DeepSeekBaseURL = "https://api.deepseek.com"
 // json_object) but not a schema, so the schema derived from the struct goes into the
 // system prompt and the reply is validated by unmarshalling into the struct.
 type OpenAICompat struct {
-	http    *http.Client
-	baseURL string
-	apiKey  string
-	model   string
-	meter   *metrics.Meter
+	http     *http.Client
+	baseURL  string
+	apiKey   string
+	model    string
+	meter    *metrics.Meter
+	thinking *bool // nil: provider default; false: off (bounded tasks); true: on
+}
+
+// WithoutThinking turns the provider's reasoning mode off for this model. A bounded,
+// structured task does not need it, and a reasoning model that thinks inside the completion
+// budget can return an empty object when the budget runs out.
+func (c *OpenAICompat) WithoutThinking() *OpenAICompat {
+	off := false
+	c.thinking = &off
+	return c
 }
 
 // NewOpenAICompat returns a Model bound to one model id on one endpoint. A nil meter is fine.
@@ -52,6 +62,11 @@ type chatRequest struct {
 	Messages       []chatMessage `json:"messages"`
 	ResponseFormat format        `json:"response_format"`
 	MaxTokens      int           `json:"max_tokens"`
+	Thinking       *thinking     `json:"thinking,omitempty"`
+}
+
+type thinking struct {
+	Type string `json:"type"` // "enabled" | "disabled"
 }
 
 type chatMessage struct {
@@ -114,12 +129,19 @@ func (c *OpenAICompat) ask(ctx context.Context, system, user, schema string, out
 	// example the provider asks for.
 	system += "\n\nRespond with a single json object and nothing else. It must conform to this JSON Schema:\n" + schema
 
-	body, err := json.Marshal(chatRequest{
+	req0 := chatRequest{
 		Model:          c.model,
 		Messages:       []chatMessage{{Role: "system", Content: system}, {Role: "user", Content: user}},
 		ResponseFormat: format{Type: "json_object"},
 		MaxTokens:      4096,
-	})
+	}
+	if c.thinking != nil {
+		req0.Thinking = &thinking{Type: "disabled"}
+		if *c.thinking {
+			req0.Thinking.Type = "enabled"
+		}
+	}
+	body, err := json.Marshal(req0)
 	if err != nil {
 		return err
 	}

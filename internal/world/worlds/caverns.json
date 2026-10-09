@@ -99,7 +99,7 @@
     },
     "bridge": {
       "name": "Toll Bridge",
-      "description": "A stone bridge over a drop you cannot see the bottom of, and on it a troll with a chain around one ankle and an open hand the size of a shield. He does not speak. He waits. North, past him, a doorway; south, the tunnel.",
+      "description": "A stone bridge over a drop you cannot see the bottom of, and on it a troll with a chain around one ankle and an open hand the size of a shield. He does not speak. He waits. North, past him, a landing; south, the tunnel.",
       "hazard": {
         "requires": "coin",
         "consumes": true,
@@ -107,15 +107,15 @@
         "death": "The troll's hand closes on you instead."
       },
       "exits": {
-        "north": "antechamber",
+        "north": "landing",
         "south": "dark_tunnel"
       }
     },
     "antechamber": {
       "name": "Antechamber",
-      "description": "A square room with a door of green stone to the east, carved with coasts and rivers and tiny towers. Words are cut above it. The bridge is back south.",
+      "description": "A square room with a door of green stone to the east, carved with coasts and rivers and tiny towers. Words are cut above it. The landing is back south.",
       "exits": {
-        "south": "bridge",
+        "south": "landing",
         "east": "treasury"
       },
       "locks": {
@@ -133,6 +133,24 @@
       "goal": true,
       "exits": {
         "west": "antechamber"
+      }
+    },
+    "landing": {
+      "name": "Landing of Two Arches",
+      "description": "A landing before two archways, east and west. Beyond each arch the floor is a painted cloth stretched over a shaft; you can see both cloths breathe in the draft, and a pebble dropped through either falls for a long time before it stops. One of the two cloths, the old story goes, lies over solid stone. Above the west arch a carved skull, above the east arch a carved cup. Letters cut into the step: THE SKULL KEEPS WHAT IT IS GIVEN. THE CUP GIVES IT BACK. The bridge is south.",
+      "exits": {
+        "south": "bridge",
+        "west": "oubliette",
+        "east": "antechamber"
+      }
+    },
+    "oubliette": {
+      "name": "Oubliette",
+      "description": "A shaft.",
+      "trap": true,
+      "death": "The floor beyond the skull is a painted cloth over a shaft. The skull keeps you.",
+      "exits": {
+        "up": "landing"
       }
     }
   }

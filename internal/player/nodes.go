@@ -92,37 +92,58 @@ func probability(answers map[string]jev.Answer, key string) float64 {
 	return 0.5
 }
 
-// cheapMove is the deterministic policy, in order: take what is visible; explore a safe
-// unexplored exit here; walk the known map towards the nearest room that still has one;
-// when the frontier is gone, look closely at rooms not yet looked at, nearest first. Every
-// text-adventure player does these without thinking, so they cost nothing here either.
-// When it returns nothing, the models earn their turn.
+// cheapMove is the deterministic policy, in cost order: take what is visible; look around
+// a room on arrival (one turn, and the only way hidden exits appear); explore a safe
+// unexplored exit here; walk the known map to the nearest room that still has one; and when
+// nothing safe is left, walk to the room where an exit was refused for risk and stop there,
+// because that is where a judgment is needed. Every text-adventure player does all of this
+// without thinking, so it costs nothing here either. When it returns nothing, the models
+// earn their turn, standing in the right room.
 func cheapMove(cfg Config) graph.Node[State] {
 	return func(_ context.Context, s *State) error {
-		if len(s.Obs.Items) > 0 {
-			s.Chosen = &Choice{Command: world.Take + " " + s.Obs.Items[0], Layer: LayerCode}
-			return nil
+		pick := func(command, note string) {
+			s.Chosen = &Choice{Command: command, Layer: LayerCode, Note: note}
 		}
-		if dir, ok := s.safeUnexploredExit(s.Obs.Room, cfg); ok {
-			s.Chosen = &Choice{Command: world.Go + " " + dir, Layer: LayerCode}
-			return nil
-		}
-		if dir, ok := s.stepTowards(func(room string) bool {
-			_, ok := s.safeUnexploredExit(room, cfg)
-			return ok
-		}); ok {
-			s.Chosen = &Choice{Command: world.Go + " " + dir, Layer: LayerCode, Note: "walking to the frontier"}
-			return nil
-		}
-		if !s.here().Looked {
-			s.Chosen = &Choice{Command: world.Look, Layer: LayerCode, Note: "frontier exhausted; looking closely"}
-			return nil
-		}
-		if dir, ok := s.stepTowards(func(room string) bool { return !s.Map[room].Looked }); ok {
-			s.Chosen = &Choice{Command: world.Go + " " + dir, Layer: LayerCode, Note: "walking to a room not yet looked at"}
+		switch {
+		case len(s.Obs.Items) > 0:
+			pick(world.Take+" "+s.Obs.Items[0], "")
+		case !s.here().Looked:
+			pick(world.Look, "new room; looking closely")
+		default:
+			if dir, ok := s.safeUnexploredExit(s.Obs.Room, cfg); ok {
+				pick(world.Go+" "+dir, "")
+				return nil
+			}
+			if dir, ok := s.stepTowards(func(room string) bool {
+				_, ok := s.safeUnexploredExit(room, cfg)
+				return ok
+			}); ok {
+				pick(world.Go+" "+dir, "walking to the frontier")
+				return nil
+			}
+			if s.hasRefusedExit(s.Obs.Room, cfg) {
+				return nil // the judgment call is here; let the models have it
+			}
+			if dir, ok := s.stepTowards(func(room string) bool { return s.hasRefusedExit(room, cfg) }); ok {
+				pick(world.Go+" "+dir, "walking to the exit code refused")
+			}
 		}
 		return nil
 	}
+}
+
+// hasRefusedExit reports whether room has an unexplored exit code will not take on its own.
+func (s *State) hasRefusedExit(room string, cfg Config) bool {
+	k, ok := s.Map[room]
+	if !ok {
+		return false
+	}
+	for dir, to := range k.Exits {
+		if to == "" && k.Risk[dir] >= cfg.RiskThreshold && !s.ruledOut(room, world.Go+" "+dir) {
+			return true
+		}
+	}
+	return false
 }
 
 // propose asks the small model for candidate commands. Bounded output, cheap to get wrong:
@@ -144,8 +165,9 @@ func propose(model llm.Model, cfg Config) graph.Node[State] {
 }
 
 // rank keeps the legal candidates, then lets the decision model pick one. A single legal
-// candidate needs no model; zero means the player is stuck.
-func rank(decider jev.Decider) graph.Node[State] {
+// candidate needs no model; zero means the player is stuck. A pick the decision model is
+// not confident about is escalated to the large model, which reads the prose and explains.
+func rank(decider jev.Decider, large llm.Model, cfg Config) graph.Node[State] {
 	return func(ctx context.Context, s *State) error {
 		legal := slices.DeleteFunc(slices.Clone(s.Candidates), func(c string) bool { return !s.legal(c) })
 		switch len(legal) {
@@ -155,6 +177,8 @@ func rank(decider jev.Decider) graph.Node[State] {
 			s.Chosen = &Choice{Command: legal[0], Layer: LayerSmall, Note: "only legal proposal"}
 			return nil
 		}
+		s.Candidates = legal
+
 		state, err := assessPrompt.render("state", s)
 		if err != nil {
 			return err
@@ -170,16 +194,33 @@ func rank(decider jev.Decider) graph.Node[State] {
 		if err == nil {
 			picked = answers["next"]
 		}
-		if !slices.Contains(legal, picked.Choice) {
-			// No decision, or one outside the legal set: the proposer's own order stands.
-			s.Chosen = &Choice{Command: legal[0], Layer: LayerSmall, Note: "decision model unavailable; first proposal"}
+		if slices.Contains(legal, picked.Choice) && picked.Confidence >= cfg.RankMinConfidence {
+			s.Chosen = &Choice{
+				Command: picked.Choice,
+				Layer:   LayerDecision,
+				Note:    fmt.Sprintf("confidence %.2f over %d proposals", picked.Confidence, len(legal)),
+			}
 			return nil
 		}
-		s.Chosen = &Choice{
-			Command: picked.Choice,
-			Layer:   LayerDecision,
-			Note:    fmt.Sprintf("confidence %.2f over %d proposals", picked.Confidence, len(legal)),
+
+		// Not confident, or no decision at all: the large model reads the room and decides.
+		user, err := pickPrompt.render("user", s)
+		if err != nil {
+			return err
 		}
+		var choice Pick
+		if err := large.Ask(ctx, pickPrompt.system(), user, &choice); err != nil {
+			return err
+		}
+		command := strings.ToLower(strings.TrimSpace(choice.Command))
+		if !slices.Contains(legal, command) {
+			command = legal[0] // the model wandered off the list; the proposer's order stands
+		}
+		note := strings.TrimSpace(choice.Reasoning)
+		if picked.Choice != "" {
+			note = fmt.Sprintf("decision model unsure (%.2f); %s", picked.Confidence, note)
+		}
+		s.Chosen = &Choice{Command: command, Layer: LayerLarge, Note: note}
 		return nil
 	}
 }
@@ -246,6 +287,9 @@ func act(w world.World) graph.Node[State] {
 		case cmd.Verb == world.Answer && before.Riddle != "" && after.Riddle == "":
 			entry.Progress = true
 		case cmd.Verb == world.Look:
+			// Looking at a room for the first time is knowledge gained, whether or not it
+			// reveals an exit; it must not count towards "stuck".
+			entry.Progress = !s.here().Looked
 			s.here().Looked = true
 			if len(after.Exits) > len(before.Exits) {
 				s.Obs = after // a revealed exit must reach the map before the next cheap move

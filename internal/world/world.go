@@ -55,6 +55,7 @@ type Room struct {
 	Hidden      map[string]Hidden `json:"hidden,omitempty"`
 	Items       []string          `json:"items,omitempty"`
 	Dark        bool              `json:"dark,omitempty"`
+	Trap        bool              `json:"trap,omitempty"` // entering kills; nothing protects
 	Death       string            `json:"death,omitempty"`
 	Hazard      *Hazard           `json:"hazard,omitempty"`
 	Locks       map[string]Lock   `json:"locks,omitempty"`
@@ -188,6 +189,7 @@ type Game struct {
 	items     map[string][]string // room -> items still there
 	unlocked  map[string]bool     // "room/dir"
 	revealed  map[string]bool     // rooms where "look" exposed the hidden exits
+	paid      map[string]bool     // hazards already satisfied; a toll is paid once
 	riddle    string              // riddle currently posed, if any
 	message   string
 	dead      bool
@@ -203,6 +205,7 @@ func New(w World) *Game {
 		items:    make(map[string][]string, len(w.Rooms)),
 		unlocked: make(map[string]bool),
 		revealed: make(map[string]bool),
+		paid:     make(map[string]bool),
 	}
 	for id, r := range w.Rooms {
 		g.items[id] = slices.Clone(r.Items)
@@ -322,11 +325,15 @@ func (g *Game) move(dir string) {
 		return
 	}
 	dest := g.world.Rooms[to]
+	if dest.Trap {
+		g.die(dest.Death)
+		return
+	}
 	if dest.Dark && !slices.Contains(g.inventory, "lantern") {
 		g.die(dest.Death)
 		return
 	}
-	if h := dest.Hazard; h != nil {
+	if h := dest.Hazard; h != nil && !g.paid[to] {
 		i := slices.Index(g.inventory, h.Requires)
 		if i < 0 {
 			g.die(h.Death)
@@ -335,6 +342,7 @@ func (g *Game) move(dir string) {
 		if h.Consumes {
 			g.inventory = slices.Delete(g.inventory, i, i+1)
 		}
+		g.paid[to] = true
 		g.message = h.Pass
 	}
 	g.room, g.riddle = to, ""

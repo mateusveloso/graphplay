@@ -41,6 +41,10 @@ type Config struct {
 	// unequipped exits that killed the player scored 0.45 to 0.54, equipped ones 0.02 to 0.14.
 	RiskThreshold float64
 
+	// RankMinConfidence is the decision model's confidence below which a choice among
+	// proposals is escalated to the large model, the same way an uncertain check would be.
+	RankMinConfidence float64
+
 	MaxTurns          int // hard stop, win or not
 	MaxDeaths         int // deaths before a human is asked
 	StuckTurns        int // turns without progress before a human is asked
@@ -63,6 +67,7 @@ func FromEnv() Config {
 		AnthropicAPIKey:   os.Getenv("ANTHROPIC_API_KEY"),
 		TypeSafeAPIKey:    os.Getenv("TYPESAFE_API_KEY"),
 		RiskThreshold:     envFloat("PLAY_RISK_THRESHOLD", 0.3),
+		RankMinConfidence: envFloat("PLAY_RANK_MIN_CONFIDENCE", 0.5),
 		MaxTurns:          envInt("PLAY_MAX_TURNS", 60),
 		MaxDeaths:         envInt("PLAY_MAX_DEATHS", 3),
 		StuckTurns:        envInt("PLAY_STUCK_TURNS", 8),
@@ -89,6 +94,9 @@ func (c Config) Validate() error {
 	}
 	if c.RiskThreshold <= 0 || c.RiskThreshold > 1 {
 		errs = append(errs, fmt.Errorf("PLAY_RISK_THRESHOLD must be in (0, 1], got %v", c.RiskThreshold))
+	}
+	if c.RankMinConfidence < 0 || c.RankMinConfidence > 1 {
+		errs = append(errs, fmt.Errorf("PLAY_RANK_MIN_CONFIDENCE must be in [0, 1], got %v", c.RankMinConfidence))
 	}
 	return errors.Join(errs...)
 }
