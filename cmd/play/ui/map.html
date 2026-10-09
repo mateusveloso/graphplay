@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>graphplay · map</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b22; --line: #2a313c; --fg: #d7dde6; --dim: #8b949e;
+    --code: #9aa4b2; --decision: #2dd4bf; --small: #f59e0b; --large: #a78bfa; --human: #4ade80;
+    --active: #f2cc60; --danger: #f87171; --safe: #4ade80; --unknown: #4b5563;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; }
+  header { display: flex; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); height: 50px; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .spacer { flex: 1; }
+  select, button { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: inherit; cursor: pointer; }
+  button:disabled { opacity: .4; cursor: default; }
+  main { display: grid; grid-template-columns: 300px 1fr; grid-template-rows: 1fr 150px; gap: 12px; padding: 12px 16px; height: calc(100vh - 50px); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-height: 0; position: relative; }
+  .panel h2 { margin: 0 0 8px; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
+  #graph { grid-row: 1 / span 2; overflow: hidden; display: flex; flex-direction: column; }
+  #graph svg { width: 100%; height: auto; max-height: calc(100% - 20px); }
+  #mapwrap { overflow: hidden; }
+  #map { width: 100%; height: calc(100% - 22px); }
+  #card { display: grid; grid-template-columns: 6px 1fr auto; gap: 14px; align-items: stretch; }
+  #card .bar { border-radius: 3px; background: var(--unknown); }
+  #card .who { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
+  #card .headline { font-size: 18px; font-weight: 600; margin: 2px 0 4px; }
+  #card .why { color: #c9d1d9; white-space: pre-wrap; max-height: 80px; overflow: hidden; }
+  #card .meta { text-align: right; color: var(--dim); font-size: 12px; min-width: 150px; }
+  #card .meta b { display: block; font-size: 22px; color: var(--fg); font-variant-numeric: tabular-nums; }
+  .layer-code { color: var(--code); } .layer-decision-model { color: var(--decision); } .layer-small-llm { color: var(--small); } .layer-large-llm { color: var(--large); } .layer-human { color: var(--human); }
+  /* an SVG is a replaced element: inset alone leaves it at 300x150, so size it explicitly */
+  #beam { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 5; overflow: visible; }
+  #beam * { pointer-events: none; }
+  .pulse { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+  /* map pieces */
+  .room rect { fill: #1b2129; stroke: #3a4350; stroke-width: 1.5; rx: 8; }
+  .room.here rect { stroke: var(--active); stroke-width: 2.5; }
+  .room text { fill: var(--fg); font-size: 12.5px; font-weight: 600; }
+  .room .kind { fill: var(--dim); font-size: 10px; font-weight: 400; letter-spacing: .06em; }
+  .edge { stroke: #55606e; stroke-width: 2; fill: none; }
+  .stub { stroke-width: 3; fill: none; stroke-linecap: round; }
+  .stub.unknown { stroke: var(--unknown); stroke-dasharray: 3 5; }
+  .stub.safe { stroke: var(--safe); }
+  .stub.danger { stroke: var(--danger); }
+  .stub-label { font-size: 11px; font-weight: 600; }
+  .stub-label.danger { fill: var(--danger); } .stub-label.safe { fill: var(--safe); } .stub-label.unknown { fill: var(--dim); }
+  .skull { font-size: 16px; }
+  .player circle { fill: var(--active); stroke: #111; stroke-width: 2; }
+  .player text { fill: #111; font-size: 11px; font-weight: 700; }
+  .icon { font-size: 15px; }
+  #gate { position: absolute; left: 12px; right: 12px; bottom: 12px; display: none; background: var(--panel); border: 1px solid var(--human); border-radius: 8px; padding: 10px; }
+  #gate.on { display: flex; gap: 8px; align-items: center; }
+  #gate input { flex: 1; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: inherit; }
+</style>
+</head>
+<body>
+<header>
+  <h1>graphplay</h1>
+  <span class="muted" id="tagline"></span>
+  <span class="spacer"></span>
+  <select id="world"></select>
+  <button id="start">play</button>
+</header>
+<main>
+  <section class="panel" id="graph"><h2 id="h-graph">graph</h2><div id="mermaid"></div></section>
+  <section class="panel" id="mapwrap"><h2 id="h-map">map</h2><svg id="map"></svg>
+    <div id="gate"><span id="gate-why"></span><input id="cmd" autocomplete="off"><button id="send">send</button><button id="stop">stop</button></div>
+  </section>
+  <section class="panel" id="card">
+    <div class="bar"></div>
+    <div><div class="who" id="who">—</div><div class="headline" id="headline"></div><div class="why" id="why"></div></div>
+    <div class="meta" id="meta"></div>
+  </section>
+</main>
+<svg id="beam"></svg>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs";
+mermaid.initialize({ startOnLoad: false, theme: "dark", flowchart: { curve: "basis" } });
+
+const lang = new URLSearchParams(location.search).get("lang") === "pt" ? "pt" : "en";
+const T = {
+  en: { tagline: "the map is drawn as the player learns it; every move has a thread to whoever decided it", play: "play", graph: "graph", map: "map",
+        turn: "turn", deaths: "deaths", send: "send", stop: "stop", placeholder: 'a command, e.g. "go north"', won: "won", stopped: "stopped", finished: "not finished",
+        layers: { code: "code", "decision-model": "decision model", "small-llm": "small model", "large-llm": "large model", human: "human" },
+        refused: "refused", safe: "safe", died: "died, reloaded", risk: "risk", danger: "danger", protected: "protected",
+        rules: { "new room; looking closely": "new room: look around first", "walking to the frontier": "walking the known map to the frontier", "walking to the exit code refused": "walking to the exit it refused, to ask the models there", "only legal proposal": "the only legal proposal" },
+        reading: "reads the prose of the room", asksTwo: "two statements per exit: is a danger described, does the inventory cover it",
+        riddle: "reads the riddle", proposing: "proposes commands", choosing: "chooses among the proposals", human: "a human decides", error: "error" },
+  pt: { tagline: "o mapa nasce conforme o jogador descobre; cada jogada tem um fio até quem decidiu", play: "jogar", graph: "grafo", map: "mapa",
+        turn: "turno", deaths: "mortes", send: "enviar", stop: "parar", placeholder: 'um comando, ex. "go norte"', won: "venceu", stopped: "parado", finished: "não terminou",
+        layers: { code: "código", "decision-model": "modelo de decisão", "small-llm": "modelo pequeno", "large-llm": "modelo grande", human: "humano" },
+        refused: "recusado", safe: "seguro", died: "morreu, recarregou", risk: "risco", danger: "perigo", protected: "proteção",
+        rules: { "new room; looking closely": "sala nova: olhar com atenção primeiro", "walking to the frontier": "andando pelo mapa conhecido até a fronteira", "walking to the exit code refused": "andando até a saída que recusou, pra perguntar aos modelos lá", "only legal proposal": "a única proposta legal" },
+        reading: "lê a prosa da sala", asksTwo: "duas afirmações por saída: há perigo descrito, o inventário cobre",
+        riddle: "lê o enigma", proposing: "propõe comandos", choosing: "escolhe entre as propostas", human: "um humano decide", error: "erro" },
+}[lang];
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const colorOf = { code: "#9aa4b2", "decision-model": "#2dd4bf", "small-llm": "#f59e0b", "large-llm": "#a78bfa", human: "#4ade80" };
+document.documentElement.lang = lang === "pt" ? "pt-BR" : "en";
+$("#tagline").textContent = T.tagline; $("#start").textContent = T.play; $("#h-graph").textContent = T.graph; $("#h-map").textContent = T.map;
+$("#send").textContent = T.send; $("#stop").textContent = T.stop; $("#cmd").placeholder = T.placeholder;
+
+// --- the small graph on the left
+let diagram = await (await fetch("/graph.mmd")).text();
+let renderSeq = 0;
+async function drawGraph(active) {
+  const dark = "\n\tclassDef default fill:#1f2630,stroke:#8b949e,color:#d7dde6;\n\tclassDef first fill:#1f2630,stroke:#8b949e,color:#d7dde6;\n\tclassDef last fill:#2a2440,stroke:#a78bfa,color:#d7dde6;\n";
+  const text = diagram + dark + (active ? `\tclassDef active fill:#f2cc60,color:#111,stroke:#f2cc60,stroke-width:2px;\n\tclass ${active} active;\n` : "");
+  try { const { svg } = await mermaid.render("g" + (++renderSeq), text); $("#mermaid").innerHTML = svg; } catch (e) { $("#mermaid").textContent = e.message; }
+}
+await drawGraph(null);
+function graphNodeRect(name) {
+  const el = [...document.querySelectorAll("#mermaid .node")].find((n) => n.id.includes(`-${name}-`));
+  return el ? el.getBoundingClientRect() : null;
+}
+
+// --- worlds and geometry
+const worlds = await (await fetch("/worlds")).json();
+for (const w of worlds.worlds) { const o = document.createElement("option"); o.value = o.textContent = w; o.selected = w === worlds.default; $("#world").append(o); }
+let geo = null;
+async function loadGeo(id) { geo = await (await fetch(`/world?id=${encodeURIComponent(id)}`)).json(); }
+await loadGeo(worlds.default);
+$("#world").onchange = () => loadGeo($("#world").value);
+
+// --- the map: drawn only from what the player knows
+const CELL = { w: 230, h: 150 }, BOX = { w: 164, h: 60 };
+const svgNS = "http://www.w3.org/2000/svg";
+function el(tag, attrs = {}, text) {
+  const n = document.createElementNS(svgNS, tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (text != null) n.textContent = text;
+  return n;
+}
+function center(id) { const p = geo.pos[id]; return p ? { x: p.x * CELL.w + CELL.w / 2, y: p.y * CELL.h + CELL.h / 2 } : null; }
+function stubEnd(id, dir) {
+  const c = center(id), v = geo.dirs[dir] || [0, 0];
+  // a stub leaves the box edge and ends short of the neighbouring cell; the label sits past its end
+  return { x: c.x + v[0] * (BOX.w / 2 + 34), y: c.y + v[1] * (BOX.h / 2 + 34), ax: c.x + v[0] * (BOX.w / 2), ay: c.y + v[1] * (BOX.h / 2), vx: v[0], vy: v[1] };
+}
+const anchors = {}; // "room/dir" and "room" -> client-space points for the beam
+
+function drawMap(s) {
+  const svg = $("#map");
+  svg.innerHTML = "";
+  const known = s.map || {};
+  const ids = Object.keys(known).filter((id) => geo.pos[id]);
+  if (ids.length === 0) return;
+  const xs = ids.map((id) => geo.pos[id].x), ys = ids.map((id) => geo.pos[id].y);
+  const minX = Math.min(...xs) - 0.6, maxX = Math.max(...xs) + 1.6, minY = Math.min(...ys) - 0.6, maxY = Math.max(...ys) + 1.6;
+  svg.setAttribute("viewBox", `${minX * CELL.w} ${minY * CELL.h} ${(maxX - minX) * CELL.w} ${(maxY - minY) * CELL.h}`);
+  const fatal = s.fatal || {};
+  const drawnEdges = new Set();
+
+  // edges and stubs first, boxes on top
+  for (const id of ids) {
+    const k = known[id], c = center(id);
+    for (const [dir, to] of Object.entries(k.exits || {})) {
+      if (to && geo.pos[to]) {
+        const key = [id, to].sort().join("|");
+        if (!drawnEdges.has(key)) { drawnEdges.add(key); const d = center(to); svg.append(el("line", { class: "edge", x1: c.x, y1: c.y, x2: d.x, y2: d.y })); }
+        continue;
+      }
+      const e = stubEnd(id, dir);
+      const risk = k.risk?.[dir];
+      const assessed = k.assessed && k.risk && dir in k.risk;
+      const cls = !assessed ? "unknown" : risk >= geo.risk_threshold ? "danger" : "safe";
+      svg.append(el("line", { class: `stub ${cls}`, x1: e.ax, y1: e.ay, x2: e.x, y2: e.y, "data-anchor": `${id}/${dir}` }));
+      const label = !assessed ? dir : `${dir} ${risk.toFixed(2)}`;
+      const anchor = e.vx > 0 ? "start" : e.vx < 0 ? "end" : "middle";
+      svg.append(el("text", { class: `stub-label ${cls}`, x: e.x + e.vx * 6, y: e.y + e.vy * 14 + 4, "text-anchor": anchor }, label));
+      if ((fatal[id] || []).some((d) => d.command === `go ${dir}`)) svg.append(el("text", { class: "skull", x: e.x + e.vx * 6 - 8, y: e.y + e.vy * 14 - 12 }, "💀"));
+    }
+  }
+  for (const id of ids) {
+    const k = known[id], c = center(id), here = id === s.obs?.room;
+    const g = el("g", { class: `room${here ? " here" : ""}`, "data-anchor": id });
+    g.append(el("rect", { x: c.x - BOX.w / 2, y: c.y - BOX.h / 2, width: BOX.w, height: BOX.h }));
+    g.append(el("text", { x: c.x, y: c.y + (k.kind ? 1 : 5), "text-anchor": "middle" }, k.name || id));
+    if (k.kind) g.append(el("text", { class: "kind", x: c.x, y: c.y + 16, "text-anchor": "middle" }, k.kind.toUpperCase()));
+    const icon = k.kind === "puzzle" ? "🔒" : k.kind === "hazard" ? "⚠️" : k.kind === "goal" ? "🏆" : "";
+    if (icon) g.append(el("text", { class: "icon", x: c.x + BOX.w / 2 - 14, y: c.y - BOX.h / 2 + 16 }, icon));
+    svg.append(g);
+  }
+  // player token
+  const here = s.obs?.room;
+  if (here && geo.pos[here]) {
+    const c = center(here);
+    const p = el("g", { class: "player" });
+    p.append(el("circle", { cx: c.x - BOX.w / 2 + 14, cy: c.y - BOX.h / 2 + 14, r: 9 }));
+    p.append(el("text", { x: c.x - BOX.w / 2 + 14, y: c.y - BOX.h / 2 + 18, "text-anchor": "middle" }, "P"));
+    svg.append(p);
+  }
+}
+
+function anchorRect(key) {
+  const node = $("#map").querySelector(`[data-anchor="${CSS.escape(key)}"]`);
+  return node ? node.getBoundingClientRect() : null;
+}
+
+// --- the thread from the deciding node to the action on the map
+function beam(fromNode, toKey, color) {
+  const a = graphNodeRect(fromNode), b = anchorRect(toKey);
+  const svg = $("#beam");
+  svg.innerHTML = "";
+  if (!a || !b) return;
+  const x1 = a.right, y1 = a.top + a.height / 2, x2 = b.left + b.width / 2, y2 = b.top + b.height / 2;
+  const mx = (x1 + x2) / 2;
+  const path = el("path", { d: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`, fill: "none", stroke: color, "stroke-width": 3, "stroke-linecap": "round", opacity: .95 });
+  const len = 2000;
+  path.setAttribute("stroke-dasharray", len); path.setAttribute("stroke-dashoffset", len);
+  path.animate([{ strokeDashoffset: len }, { strokeDashoffset: 0 }], { duration: 650, fill: "forwards", easing: "ease-out" });
+  svg.append(path);
+  svg.append(el("circle", { cx: x2, cy: y2, r: 7, fill: color, opacity: .9 }));
+}
+
+// --- the card: who decided, what, why
+function card(layer, headline, why, meta) {
+  $("#card .bar").style.background = colorOf[layer] || "#4b5563";
+  $("#who").textContent = T.layers[layer] || layer || "";
+  $("#who").className = `who layer-${layer || ""}`;
+  $("#headline").textContent = headline || "";
+  $("#why").textContent = why || "";
+  $("#meta").innerHTML = meta || "";
+}
+const ruleText = (note) => { for (const [en, t] of Object.entries(T.rules)) if (note?.startsWith(en)) return t; return note || ""; };
+const nodeOfLayer = (chosen) => !chosen ? "cheap_move" : chosen.layer === "human" ? "gate" : chosen.layer === "code" ? "cheap_move" : chosen.command.startsWith("answer") ? "solve" : "rank";
+const targetOf = (s) => { const c = s.chosen?.command || ""; const [verb, arg] = c.split(" "); return verb === "go" ? `${s.obs.room}/${arg}` : s.obs.room; };
+
+let startedAt = 0, timer = null;
+function spinner(text) { clearInterval(timer); startedAt = Date.now(); const tick = () => { $("#headline").textContent = `${text} · ${((Date.now() - startedAt) / 1000).toFixed(1)}s`; }; tick(); timer = setInterval(tick, 100); }
+
+function render(e) {
+  if (e.phase === "error") { card("", T.error, e.error, ""); clearInterval(timer); $("#start").disabled = false; return; }
+  const s = e.state, obs = s.obs || {};
+  drawGraph(e.phase === "end" ? null : e.node);
+  drawMap(s);
+  const metaHtml = `${T.turn} <b>${s.turn ?? 0}</b>${T.deaths} <b>${s.deaths ?? 0}</b>`;
+  $("#meta").innerHTML = metaHtml;
+
+  if (e.phase === "start") {
+    if (e.node === "assess") { card("decision-model", "", `${T.reading}. ${T.asksTwo}.`, metaHtml); spinner(obs.name || ""); beam("assess", obs.room, colorOf["decision-model"]); }
+    if (e.node === "solve") { card("large-llm", "", obs.riddle || "", metaHtml); spinner(T.riddle); beam("solve", obs.room, colorOf["large-llm"]); }
+    if (e.node === "propose") { card("small-llm", "", "", metaHtml); spinner(T.proposing); }
+    if (e.node === "rank") { card("decision-model", "", (s.candidates || []).join(" · "), metaHtml); spinner(T.choosing); }
+    if (e.node === "act" && s.chosen) {
+      const c = s.chosen, layer = c.layer;
+      $("#card .bar").classList.remove("pulse"); clearInterval(timer);
+      const why = layer === "code" ? ruleText(c.note) : (c.note || "");
+      card(layer, `> ${c.command}`, why, metaHtml);
+      beam(nodeOfLayer(c), targetOf(s), colorOf[layer]);
+    }
+    return;
+  }
+  if (e.phase === "done") {
+    clearInterval(timer);
+    if (e.node === "assess") {
+      const k = s.map?.[obs.room] || {};
+      const lines = (obs.exits || []).map((d) => `${d}: ${T.danger} ${(k.danger?.[d] ?? 0).toFixed(2)} · ${T.protected} ${(k.protected?.[d] ?? 0).toFixed(2)} → ${T.risk} ${(k.risk?.[d] ?? 0).toFixed(2)}${(k.risk?.[d] ?? 0) >= geo.risk_threshold ? `  ${T.refused.toUpperCase()}` : ""}`);
+      card("decision-model", `${obs.name}: ${k.kind || ""}`, lines.join("\n"), metaHtml);
+    }
+    if (e.node === "act") {
+      const last = s.ledger?.[s.ledger.length - 1];
+      if (last?.died) { card(last.layer, `> ${last.command}`, `${T.died.toUpperCase()}\n${last.outcome || ""}`, metaHtml); }
+      else if (last?.outcome) { $("#why").textContent = ($("#why").textContent ? $("#why").textContent + "\n" : "") + last.outcome; }
+    }
+  }
+  if (e.phase === "paused") {
+    $("#gate").classList.add("on"); $("#gate-why").textContent = e.pause?.payload?.why || ""; $("#cmd").focus();
+    card("human", T.human, e.pause?.payload?.why || "", metaHtml);
+  } else $("#gate").classList.remove("on");
+  if (e.phase === "end") {
+    card("", s.won ? T.won.toUpperCase() : s.stopped ? T.stopped : T.finished, (e.usage || []).map((u) => `${u.model}: ${u.calls} calls · ${(u.duration / 1e9).toFixed(1)}s`).join("\n"), metaHtml);
+    $("#who").textContent = `${T.turn} ${s.turn} · ${T.deaths} ${s.deaths}`;
+    $("#card .bar").style.background = s.won ? "#f2cc60" : "#4b5563";
+    $("#beam").innerHTML = "";
+  }
+  $("#start").disabled = !(e.phase === "end" || e.phase === "paused");
+}
+
+const es = new EventSource("/events");
+es.onmessage = (m) => render(JSON.parse(m.data));
+window.addEventListener("resize", () => { $("#beam").innerHTML = ""; });
+
+$("#start").onclick = async () => {
+  $("#start").disabled = true;
+  await loadGeo($("#world").value);
+  const r = await fetch(`/start?world=${encodeURIComponent($("#world").value)}`, { method: "POST" });
+  if (!r.ok) { card("", T.error, await r.text(), ""); $("#start").disabled = false; }
+};
+$("#send").onclick = async () => { await fetch("/resume", { method: "POST", body: JSON.stringify({ command: $("#cmd").value }) }); $("#cmd").value = ""; };
+$("#cmd").addEventListener("keydown", (ev) => { if (ev.key === "Enter") $("#send").click(); });
+$("#stop").onclick = async () => { await fetch("/resume", { method: "POST", body: JSON.stringify({ stop: true }) }); };
+</script>
+</body>
+</html>

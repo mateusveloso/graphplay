@@ -57,8 +57,15 @@ type Hidden struct {
 	Reveal string `json:"reveal"`
 }
 
+// Pos places a room on a drawing grid. Presentation only; the engine never reads it.
+type Pos struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
 // Room is one location. Dangers live in prose and in these fields; the player sees prose.
 type Room struct {
+	Pos         *Pos              `json:"pos,omitempty"`
 	Name        string            `json:"name"`
 	Description string            `json:"description"`
 	Exits       map[string]string `json:"exits"`

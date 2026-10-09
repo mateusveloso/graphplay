@@ -14,6 +14,10 @@
   },
   "rooms": {
     "entrance": {
+      "pos": {
+        "x": 1,
+        "y": 2
+      },
       "name": "Entrance Hall",
       "description": "A damp stone hall. Moss climbs the walls and water drips somewhere you cannot see. A brass lantern hangs from a hook by the stairs. Passages lead north and east.",
       "exits": {
@@ -25,6 +29,10 @@
       ]
     },
     "storeroom": {
+      "pos": {
+        "x": 2,
+        "y": 2
+      },
       "name": "Storeroom",
       "description": "Broken crates and the smell of old grain. Something glints between the boards: a copper coin. The only way out is back west.",
       "exits": {
@@ -35,6 +43,10 @@
       ]
     },
     "corridor": {
+      "pos": {
+        "x": 1,
+        "y": 1
+      },
       "name": "Long Corridor",
       "description": "A long corridor of fitted stone. To the north the passage opens into utter darkness; a cold draft comes from it. From the west you hear slow, heavy breathing and the clink of a chain. South leads back to the hall.",
       "exits": {
@@ -44,6 +56,10 @@
       }
     },
     "dark_passage": {
+      "pos": {
+        "x": 1,
+        "y": 0
+      },
       "name": "Dark Passage",
       "description": "Your light pushes the darkness back a few paces. The floor is uneven and broken; without the lantern you would never have seen the pit yawning to your left. The passage continues north. South is the corridor.",
       "dark": true,
@@ -54,6 +70,10 @@
       }
     },
     "troll_bridge": {
+      "pos": {
+        "x": 0,
+        "y": 1
+      },
       "name": "Troll Bridge",
       "description": "A rope bridge over a black chasm, and on it a troll the size of a cart, holding out a hand the size of a shovel. Beyond him, east, a doorway. The corridor is back east.",
       "hazard": {
@@ -68,6 +88,10 @@
       }
     },
     "armory": {
+      "pos": {
+        "x": 0,
+        "y": 0
+      },
       "name": "Old Armory",
       "description": "Racks of rusted weapons too brittle to lift. Dust and nothing else. The bridge is back south.",
       "exits": {
@@ -75,6 +99,10 @@
       }
     },
     "riddle_room": {
+      "pos": {
+        "x": 2,
+        "y": 0
+      },
       "name": "Carved Antechamber",
       "description": "A small round room. To the east, a stone door carved with a mouth and two ears, and words cut above it. South is the dark passage you came from.",
       "exits": {
@@ -94,6 +122,10 @@
       }
     },
     "treasury": {
+      "pos": {
+        "x": 3,
+        "y": 0
+      },
       "name": "Treasury",
       "description": "A low vault and, in its centre, a chest.",
       "goal": true,

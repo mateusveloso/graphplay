@@ -14,6 +14,10 @@
   },
   "rooms": {
     "camp": {
+      "pos": {
+        "x": 2,
+        "y": 5
+      },
       "name": "Cold Camp",
       "description": "The ashes of a fire, a torn bedroll, a dripping ceiling. Whoever camped here left in a hurry. A wide passage leads north into the hill; a narrower one goes west, where you hear water.",
       "exits": {
@@ -22,6 +26,10 @@
       }
     },
     "cistern": {
+      "pos": {
+        "x": 1,
+        "y": 5
+      },
       "name": "Cistern",
       "description": "A round pool of black water fills the room from wall to wall. Nothing floats in it and nothing lies beside it. The only way is back east.",
       "exits": {
@@ -29,6 +37,10 @@
       }
     },
     "hall": {
+      "pos": {
+        "x": 2,
+        "y": 4
+      },
       "name": "Pillared Hall",
       "description": "Six pillars hold up a ceiling you cannot see. To the north the hall ends in a tunnel that swallows all light; the air from it is cold and smells of deep stone. A low door stands west, a wide arch east, and the camp is south.",
       "exits": {
@@ -39,6 +51,10 @@
       }
     },
     "shrine": {
+      "pos": {
+        "x": 1,
+        "y": 4
+      },
       "name": "Shrine",
       "description": "A niche with a cracked statue of a seated figure. On the altar before it someone left an oil lantern. The door back east is the only exit.",
       "exits": {
@@ -49,6 +65,10 @@
       ]
     },
     "gallery": {
+      "pos": {
+        "x": 3,
+        "y": 4
+      },
       "name": "Painted Gallery",
       "description": "Faded paintings of a procession cover the walls, all of them walking toward the floor at the far end, where the flagstones are newer than the rest and a thin draft rises between them. The arch back west is the only exit you can see.",
       "exits": {
@@ -62,6 +82,10 @@
       }
     },
     "crypt": {
+      "pos": {
+        "x": 4,
+        "y": 4
+      },
       "name": "Crypt",
       "description": "Stone shelves hold the dead in neat rows. At the north end a bronze door shows a single carved footprint, and words run along its lintel. Steps lead back up.",
       "exits": {
@@ -83,6 +107,10 @@
       }
     },
     "vault": {
+      "pos": {
+        "x": 5,
+        "y": 4
+      },
       "name": "Toll Vault",
       "description": "A small vault, empty but for a stone hand holding out a single silver coin stamped with a bridge. The door back south is the only way.",
       "exits": {
@@ -93,6 +121,10 @@
       ]
     },
     "dark_tunnel": {
+      "pos": {
+        "x": 2,
+        "y": 3
+      },
       "name": "Dark Tunnel",
       "description": "Your light shows a tunnel cut through black rock, the floor split by a crevice you step across. Ahead, north, the tunnel opens onto a bridge, and from there comes slow, heavy breathing and the clink of a chain. South is the hall.",
       "dark": true,
@@ -103,6 +135,10 @@
       }
     },
     "bridge": {
+      "pos": {
+        "x": 2,
+        "y": 2
+      },
       "name": "Toll Bridge",
       "description": "A stone bridge over a drop you cannot see the bottom of, and on it a troll with a chain around one ankle and an open hand the size of a shield. He does not speak. He waits. North, past him, a landing; south, the tunnel.",
       "hazard": {
@@ -117,6 +153,10 @@
       }
     },
     "antechamber": {
+      "pos": {
+        "x": 3,
+        "y": 1
+      },
       "name": "Antechamber",
       "description": "A square room with a door of green stone to the east, carved with coasts and rivers and tiny towers. Words are cut above it. The landing is back south.",
       "exits": {
@@ -136,6 +176,10 @@
       }
     },
     "treasury": {
+      "pos": {
+        "x": 4,
+        "y": 1
+      },
       "name": "Treasury",
       "description": "A chest on a plinth, and nothing else.",
       "goal": true,
@@ -144,6 +188,10 @@
       }
     },
     "landing": {
+      "pos": {
+        "x": 2,
+        "y": 1
+      },
       "name": "Landing of Two Arches",
       "description": "A landing before two archways, east and west. Beyond each arch the floor is a painted cloth stretched over a shaft; you can see both cloths breathe in the draft, and a pebble dropped through either falls for a long time before it stops. One of the two cloths, the old story goes, lies over solid stone. Above the west arch a carved skull, above the east arch a carved cup. Letters cut into the step: THE SKULL KEEPS WHAT IT IS GIVEN. THE CUP GIVES IT BACK. The bridge is south.",
       "exits": {
@@ -153,6 +201,10 @@
       }
     },
     "oubliette": {
+      "pos": {
+        "x": 1,
+        "y": 1
+      },
       "name": "Oubliette",
       "description": "A shaft.",
       "trap": true,

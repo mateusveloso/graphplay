@@ -25,6 +25,10 @@
   },
   "rooms": {
     "acampamento": {
+      "pos": {
+        "x": 2,
+        "y": 5
+      },
       "name": "Acampamento Frio",
       "description": "As cinzas de uma fogueira, um saco de dormir rasgado, um teto que goteja. Quem acampou aqui foi embora com pressa. Uma passagem larga segue ao norte, para dentro do morro; uma mais estreita vai para oeste, de onde você ouve água.",
       "exits": {
@@ -33,6 +37,10 @@
       }
     },
     "cisterna": {
+      "pos": {
+        "x": 1,
+        "y": 5
+      },
       "name": "Cisterna",
       "description": "Um poço redondo de água preta enche a sala de parede a parede. Nada boia nela e nada está ao lado dela. O único caminho é de volta para leste.",
       "exits": {
@@ -40,6 +48,10 @@
       }
     },
     "salao": {
+      "pos": {
+        "x": 2,
+        "y": 4
+      },
       "name": "Salão de Pilares",
       "description": "Seis pilares sustentam um teto que você não enxerga. Ao norte o salão termina num túnel que engole toda a luz; o ar que vem dele é frio e cheira a pedra funda. Uma porta baixa fica a oeste, um arco largo a leste, e o acampamento ao sul.",
       "exits": {
@@ -50,6 +62,10 @@
       }
     },
     "santuario": {
+      "pos": {
+        "x": 1,
+        "y": 4
+      },
       "name": "Santuário",
       "description": "Um nicho com a estátua rachada de uma figura sentada. No altar diante dela alguém deixou uma lanterna a óleo. A porta de volta a leste é a única saída.",
       "exits": {
@@ -60,6 +76,10 @@
       ]
     },
     "galeria": {
+      "pos": {
+        "x": 3,
+        "y": 4
+      },
       "name": "Galeria Pintada",
       "description": "Pinturas desbotadas de uma procissão cobrem as paredes, todas caminhando em direção ao chão no fundo da sala, onde as lajes são mais novas que o resto e uma corrente de ar fino sobe entre elas. O arco de volta a oeste é a única saída que você vê.",
       "exits": {
@@ -73,6 +93,10 @@
       }
     },
     "cripta": {
+      "pos": {
+        "x": 4,
+        "y": 4
+      },
       "name": "Cripta",
       "description": "Prateleiras de pedra guardam os mortos em fileiras arrumadas. No fundo, ao norte, uma porta de bronze mostra uma única pegada esculpida, e há palavras ao longo da verga. Os degraus voltam para cima.",
       "exits": {
@@ -93,6 +117,10 @@
       }
     },
     "cofre": {
+      "pos": {
+        "x": 5,
+        "y": 4
+      },
       "name": "Cofre do Pedágio",
       "description": "Um cofre pequeno, vazio a não ser por uma mão de pedra que estende uma única moeda de prata com uma ponte cunhada. A porta de volta ao sul é o único caminho.",
       "exits": {
@@ -103,6 +131,10 @@
       ]
     },
     "tunel_escuro": {
+      "pos": {
+        "x": 2,
+        "y": 3
+      },
       "name": "Túnel Escuro",
       "description": "Sua luz mostra um túnel aberto na rocha preta, o chão partido por uma fenda que você atravessa com um passo. Adiante, ao norte, o túnel abre numa ponte, e de lá vem uma respiração lenta e pesada e o tinir de uma corrente. Ao sul fica o salão.",
       "dark": true,
@@ -113,6 +145,10 @@
       }
     },
     "ponte": {
+      "pos": {
+        "x": 2,
+        "y": 2
+      },
       "name": "Ponte do Pedágio",
       "description": "Uma ponte de pedra sobre um abismo de que você não vê o fundo, e sobre ela um troll com uma corrente num tornozelo e uma mão aberta do tamanho de um escudo. Ele não fala. Ele espera. Ao norte, passando por ele, um patamar; ao sul, o túnel.",
       "hazard": {
@@ -127,6 +163,10 @@
       }
     },
     "patamar": {
+      "pos": {
+        "x": 2,
+        "y": 1
+      },
       "name": "Patamar dos Dois Arcos",
       "description": "Um patamar diante de dois arcos, um a leste e um a oeste. Além de cada arco, o chão é um pano pintado esticado sobre um poço; você vê os dois panos respirarem com a corrente de ar, e uma pedrinha jogada por qualquer um deles cai por muito tempo antes de parar. Um dos dois panos, diz a história antiga, está sobre pedra firme. Acima do arco oeste uma caveira esculpida, acima do arco leste uma taça esculpida. Letras cortadas no degrau: A CAVEIRA GUARDA O QUE RECEBE. A TAÇA DEVOLVE. A ponte fica ao sul.",
       "exits": {
@@ -136,6 +176,10 @@
       }
     },
     "oubliette": {
+      "pos": {
+        "x": 1,
+        "y": 1
+      },
       "name": "Oubliette",
       "description": "Um poço.",
       "trap": true,
@@ -145,6 +189,10 @@
       }
     },
     "antecamara": {
+      "pos": {
+        "x": 3,
+        "y": 1
+      },
       "name": "Antecâmara",
       "description": "Uma sala quadrada com uma porta de pedra verde a leste, esculpida com costas, rios e torres minúsculas. Há palavras cortadas acima dela. O patamar fica de volta ao sul.",
       "exits": {
@@ -165,6 +213,10 @@
       }
     },
     "tesouro": {
+      "pos": {
+        "x": 4,
+        "y": 1
+      },
       "name": "Tesouro",
       "description": "Um baú sobre um pedestal, e nada mais.",
       "goal": true,

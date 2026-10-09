@@ -25,7 +25,7 @@ import (
 	"github.com/mateusveloso/graphplay/internal/world"
 )
 
-//go:embed ui/index.html
+//go:embed ui/*.html
 var ui embed.FS
 
 // uiEvent is what the browser receives: the runner's event plus what the models cost so far.
@@ -82,6 +82,7 @@ func (h *hub) subscribe() (<-chan []byte, [][]byte, func()) {
 // server runs one game at a time and streams it.
 type server struct {
 	cfg    player.Config
+	pace   time.Duration
 	hub    *hub
 	mu     sync.Mutex
 	meter  *metrics.Meter
@@ -93,11 +94,12 @@ type server struct {
 func cmdServe(ctx context.Context, cfg player.Config, args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
 	addr := flags.String("addr", "127.0.0.1:8080", "address to listen on")
+	pace := flags.Duration("pace", 0, "pause after every node so a person can follow, e.g. 1500ms")
 	flags.StringVar(&cfg.World, "world", cfg.World, "default world")
 	if _, err := parseInterspersed(flags, args); err != nil {
 		return err
 	}
-	s := &server{cfg: cfg, hub: newHub()}
+	s := &server{cfg: cfg, pace: *pace, hub: newHub()}
 	pages, err := fs.Sub(ui, "ui")
 	if err != nil {
 		return err
@@ -106,6 +108,7 @@ func cmdServe(ctx context.Context, cfg player.Config, args []string, out io.Writ
 	mux.Handle("GET /", http.FileServerFS(pages))
 	mux.HandleFunc("GET /graph.mmd", s.handleDiagram)
 	mux.HandleFunc("GET /worlds", s.handleWorlds)
+	mux.HandleFunc("GET /world", s.handleWorld)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	mux.HandleFunc("POST /start", s.handleStart)
 	mux.HandleFunc("POST /resume", s.handleResume)
@@ -136,6 +139,35 @@ func (s *server) handleWorlds(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, map[string]any{"worlds": world.Available(), "default": s.cfg.World})
 }
 
+// handleWorld returns a world's drawing geometry and nothing else: where each room sits on
+// the grid and which directions point where. No names, no prose, no exits. The map the page
+// draws is the player's own map, from the state; the fog is honest.
+func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		id = s.cfg.World
+	}
+	wd, err := world.Load(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	pos := make(map[string]world.Pos, len(wd.Rooms))
+	for rid, room := range wd.Rooms {
+		if room.Pos != nil {
+			pos[rid] = *room.Pos
+		}
+	}
+	writeJSON(w, map[string]any{
+		"id": wd.ID, "start": wd.Start, "lang": wd.Lang, "pos": pos,
+		"risk_threshold": s.cfg.RiskThreshold,
+		"dirs": map[string][2]int{
+			"north": {0, -1}, "south": {0, 1}, "east": {1, 0}, "west": {-1, 0}, "up": {1, -1}, "down": {1, 1},
+			"norte": {0, -1}, "sul": {0, 1}, "leste": {1, 0}, "oeste": {-1, 0}, "cima": {1, -1}, "baixo": {1, 1},
+		},
+	})
+}
+
 // handleStart begins a new game in the background; events flow through the hub.
 func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
@@ -149,9 +181,12 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		cfg.World = id
 	}
 	meter := metrics.New()
-	runner, err := appWith(cfg, meter, graph.WithObserver(func(e graph.Event[player.State]) {
-		s.hub.publish(uiEvent{Event: e, Usage: meter.Rows(), At: time.Now()})
-	}))
+	runner, err := appWith(cfg, meter,
+		graph.WithObserver(func(e graph.Event[player.State]) {
+			s.hub.publish(uiEvent{Event: e, Usage: meter.Rows(), At: time.Now()})
+		}),
+		graph.WithPace[player.State](s.pace),
+	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

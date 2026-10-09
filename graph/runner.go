@@ -81,6 +81,7 @@ type Runner[S any] struct {
 	store   Store[S]
 	log     *slog.Logger
 	observe func(Event[S])
+	pace    time.Duration
 }
 
 // Option configures a Runner.
@@ -94,6 +95,12 @@ func WithLogger[S any](l *slog.Logger) Option[S] {
 // WithObserver calls fn on every phase of every node, synchronously. Keep it fast.
 func WithObserver[S any](fn func(Event[S])) Option[S] {
 	return func(r *Runner[S]) { r.observe = fn }
+}
+
+// WithPace waits d after every completed node, so a run that code would finish in
+// milliseconds can be watched by a person. It changes nothing about what the run does.
+func WithPace[S any](d time.Duration) Option[S] {
+	return func(r *Runner[S]) { r.pace = d }
 }
 
 // NewRunner validates g and binds it to store.
@@ -185,6 +192,13 @@ func (r *Runner[S]) run(ctx context.Context, cp *Checkpoint[S]) (*Checkpoint[S],
 		r.observe(Event[S]{Thread: cp.Thread, Node: name, Phase: PhaseDone, Next: cp.Next, Took: took, State: cp.State})
 		if err := r.save(ctx, cp); err != nil {
 			return nil, err
+		}
+		if r.pace > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(r.pace):
+			}
 		}
 	}
 	cp.Done = true
