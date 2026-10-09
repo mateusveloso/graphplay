@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/invopop/jsonschema"
+
+	"github.com/mateusveloso/graphplay/internal/metrics"
 )
 
 // DeepSeekBaseURL is the OpenAI-compatible endpoint of api.deepseek.com.
@@ -26,21 +28,23 @@ type OpenAICompat struct {
 	baseURL string
 	apiKey  string
 	model   string
+	meter   *metrics.Meter
 }
 
-// NewOpenAICompat returns a Model bound to one model id on one endpoint.
-func NewOpenAICompat(baseURL, apiKey, model string) *OpenAICompat {
+// NewOpenAICompat returns a Model bound to one model id on one endpoint. A nil meter is fine.
+func NewOpenAICompat(baseURL, apiKey, model string, meter *metrics.Meter) *OpenAICompat {
 	return &OpenAICompat{
 		http:    &http.Client{Timeout: 120 * time.Second},
 		baseURL: strings.TrimRight(baseURL, "/"),
 		apiKey:  apiKey,
 		model:   model,
+		meter:   meter,
 	}
 }
 
 // NewDeepSeek is NewOpenAICompat pointed at DeepSeek.
-func NewDeepSeek(apiKey, model string) *OpenAICompat {
-	return NewOpenAICompat(DeepSeekBaseURL, apiKey, model)
+func NewDeepSeek(apiKey, model string, meter *metrics.Meter) *OpenAICompat {
+	return NewOpenAICompat(DeepSeekBaseURL, apiKey, model, meter)
 }
 
 type chatRequest struct {
@@ -63,6 +67,10 @@ type chatResponse struct {
 	Choices []struct {
 		Message chatMessage `json:"message"`
 	} `json:"choices"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
@@ -97,7 +105,11 @@ func (c *OpenAICompat) Ask(ctx context.Context, system, user string, out any) er
 	}
 }
 
-func (c *OpenAICompat) ask(ctx context.Context, system, user, schema string, out any) error {
+func (c *OpenAICompat) ask(ctx context.Context, system, user, schema string, out any) (err error) {
+	started := time.Now()
+	var usage struct{ in, out int }
+	defer func() { c.meter.Record(c.model, usage.in, usage.out, time.Since(started), err != nil) }()
+
 	// The word "json" must appear in the prompt for json_object mode; the schema is the
 	// example the provider asks for.
 	system += "\n\nRespond with a single json object and nothing else. It must conform to this JSON Schema:\n" + schema
@@ -138,6 +150,7 @@ func (c *OpenAICompat) ask(ctx context.Context, system, user, schema string, out
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return fmt.Errorf("%s: decode response: %w", c.baseURL, err)
 	}
+	usage.in, usage.out = parsed.Usage.PromptTokens, parsed.Usage.CompletionTokens
 	if parsed.Error != nil {
 		return fmt.Errorf("%s: %s", c.baseURL, parsed.Error.Message)
 	}

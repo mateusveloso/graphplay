@@ -38,7 +38,7 @@ func TestAskSendsJSONModeWithSchemaAndParsesTheReply(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	var got answer
-	if err := NewOpenAICompat(srv.URL, "k", "deepseek-flash").Ask(context.Background(), "You solve riddles.", "What repeats?", &got); err != nil {
+	if err := NewOpenAICompat(srv.URL, "k", "deepseek-flash", nil).Ask(context.Background(), "You solve riddles.", "What repeats?", &got); err != nil {
 		t.Fatal(err)
 	}
 	if got.Word != "echo" || got.Score != 3 {
@@ -59,7 +59,7 @@ func TestAskRetriesEmptyCompletions(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	var got answer
-	if err := NewOpenAICompat(srv.URL, "k", "m").Ask(context.Background(), "s", "u", &got); err != nil {
+	if err := NewOpenAICompat(srv.URL, "k", "m", nil).Ask(context.Background(), "s", "u", &got); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 2 || got.Word != "ok" {
@@ -86,7 +86,7 @@ func TestAskReportsProviderErrorsAndBadJSON(t *testing.T) {
 			}))
 			t.Cleanup(srv.Close)
 			var got answer
-			err := NewOpenAICompat(srv.URL, "k", "m").Ask(context.Background(), "s", "u", &got)
+			err := NewOpenAICompat(srv.URL, "k", "m", nil).Ask(context.Background(), "s", "u", &got)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("want error containing %q, got %v", tc.want, err)
 			}

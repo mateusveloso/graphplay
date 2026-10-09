@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/mateusveloso/graphplay/internal/metrics"
 )
 
 // Endpoint is the System One API; Model is pinned because thresholds are tuned against
@@ -62,19 +64,25 @@ type Client struct {
 	http     *http.Client
 	endpoint string
 	apiKey   string
+	meter    *metrics.Meter
 }
 
-// NewClient returns a Decider backed by the hosted API.
-func NewClient(apiKey string) *Client {
+// NewClient returns a Decider backed by the hosted API. A nil meter is fine.
+func NewClient(apiKey string, meter *metrics.Meter) *Client {
 	return &Client{
 		http:     &http.Client{Timeout: 15 * time.Second},
 		endpoint: Endpoint,
 		apiKey:   apiKey,
+		meter:    meter,
 	}
 }
 
 // Decide implements Decider with one request; the API answers every question in parallel.
-func (c *Client) Decide(ctx context.Context, state string, questions map[string]Question) (map[string]Answer, error) {
+func (c *Client) Decide(ctx context.Context, state string, questions map[string]Question) (answers map[string]Answer, err error) {
+	started := time.Now()
+	var usage struct{ in, out int }
+	defer func() { c.meter.Record(Model, usage.in, usage.out, time.Since(started), err != nil) }()
+
 	body, err := json.Marshal(map[string]any{"model": Model, "state": state, "questions": questions})
 	if err != nil {
 		return nil, err
@@ -95,10 +103,15 @@ func (c *Client) Decide(ctx context.Context, state string, questions map[string]
 	}
 	var out struct {
 		Answers map[string]Answer `json:"answers"`
+		Usage   struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, err
 	}
+	usage.in, usage.out = out.Usage.InputTokens, out.Usage.OutputTokens
 	return out.Answers, nil
 }
 

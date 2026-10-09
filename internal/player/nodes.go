@@ -195,7 +195,11 @@ func solve(model llm.Model) graph.Node[State] {
 		if err := model.Ask(ctx, solvePrompt.system(), user, &a); err != nil {
 			return err
 		}
-		s.Chosen = &Choice{Command: world.Answer + " " + strings.ToLower(strings.TrimSpace(a.Answer)), Layer: LayerLarge}
+		s.Chosen = &Choice{
+			Command: world.Answer + " " + strings.ToLower(strings.TrimSpace(a.Answer)),
+			Layer:   LayerLarge,
+			Note:    strings.TrimSpace(a.Reasoning),
+		}
 		return nil
 	}
 }

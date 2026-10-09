@@ -50,11 +50,37 @@ var ErrNotPaused = errors.New("graph: thread is not paused")
 // ErrDone is returned by Continue when the thread already reached End.
 var ErrDone = errors.New("graph: thread is done")
 
+// Phase is where a node is in its life when an Event is emitted.
+type Phase string
+
+// Phases of an Event.
+const (
+	PhaseStart  Phase = "start"
+	PhaseDone   Phase = "done"
+	PhasePaused Phase = "paused"
+	PhaseFailed Phase = "failed"
+	PhaseEnd    Phase = "end"
+)
+
+// Event is one observation of a run, for logs, dashboards or a browser watching live.
+// State is the state after the node ran (or before, on PhaseStart).
+type Event[S any] struct {
+	Thread string        `json:"thread"`
+	Node   string        `json:"node"`
+	Phase  Phase         `json:"phase"`
+	Next   string        `json:"next,omitempty"`
+	Took   time.Duration `json:"took,omitempty"`
+	Error  string        `json:"error,omitempty"`
+	Pause  *Pause        `json:"pause,omitempty"`
+	State  S             `json:"state"`
+}
+
 // Runner executes a Graph against a Store.
 type Runner[S any] struct {
-	graph *Graph[S]
-	store Store[S]
-	log   *slog.Logger
+	graph   *Graph[S]
+	store   Store[S]
+	log     *slog.Logger
+	observe func(Event[S])
 }
 
 // Option configures a Runner.
@@ -65,12 +91,17 @@ func WithLogger[S any](l *slog.Logger) Option[S] {
 	return func(r *Runner[S]) { r.log = l }
 }
 
+// WithObserver calls fn on every phase of every node, synchronously. Keep it fast.
+func WithObserver[S any](fn func(Event[S])) Option[S] {
+	return func(r *Runner[S]) { r.observe = fn }
+}
+
 // NewRunner validates g and binds it to store.
 func NewRunner[S any](g *Graph[S], store Store[S], opts ...Option[S]) (*Runner[S], error) {
 	if err := g.Validate(); err != nil {
 		return nil, fmt.Errorf("graph: invalid graph: %w", err)
 	}
-	r := &Runner[S]{graph: g, store: store, log: slog.New(slog.DiscardHandler)}
+	r := &Runner[S]{graph: g, store: store, log: slog.New(slog.DiscardHandler), observe: func(Event[S]) {}}
 	for _, opt := range opts {
 		opt(r)
 	}
@@ -128,6 +159,7 @@ func (r *Runner[S]) run(ctx context.Context, cp *Checkpoint[S]) (*Checkpoint[S],
 			return nil, fmt.Errorf("graph: unknown node %q", name)
 		}
 
+		r.observe(Event[S]{Thread: cp.Thread, Node: name, Phase: PhaseStart, State: cp.State})
 		started := time.Now()
 		err := node(ctx, &cp.State)
 		took := time.Since(started)
@@ -136,9 +168,11 @@ func (r *Runner[S]) run(ctx context.Context, cp *Checkpoint[S]) (*Checkpoint[S],
 		if errors.As(err, &pause) {
 			cp.Pause = &Pause{Node: name, Payload: pause.payload}
 			log.InfoContext(ctx, "paused", "node", name, "took", took)
+			r.observe(Event[S]{Thread: cp.Thread, Node: name, Phase: PhasePaused, Took: took, Pause: cp.Pause, State: cp.State})
 			return cp, r.save(ctx, cp)
 		}
 		if err != nil {
+			r.observe(Event[S]{Thread: cp.Thread, Node: name, Phase: PhaseFailed, Took: took, Error: err.Error(), State: cp.State})
 			return nil, fmt.Errorf("node %s: %w", name, err)
 		}
 
@@ -148,11 +182,13 @@ func (r *Runner[S]) run(ctx context.Context, cp *Checkpoint[S]) (*Checkpoint[S],
 			return nil, err
 		}
 		log.InfoContext(ctx, "step", "node", name, "next", cp.Next, "took", took)
+		r.observe(Event[S]{Thread: cp.Thread, Node: name, Phase: PhaseDone, Next: cp.Next, Took: took, State: cp.State})
 		if err := r.save(ctx, cp); err != nil {
 			return nil, err
 		}
 	}
 	cp.Done = true
+	r.observe(Event[S]{Thread: cp.Thread, Node: End, Phase: PhaseEnd, State: cp.State})
 	return cp, r.save(ctx, cp)
 }
 

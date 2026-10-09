@@ -177,6 +177,28 @@ func TestContinueRetriesTheFailedNode(t *testing.T) {
 	}
 }
 
+func TestObserverSeesEveryPhase(t *testing.T) {
+	t.Parallel()
+	var phases []string
+	r, err := graph.NewRunner(testGraph(), &graph.MemoryStore[state]{}, graph.WithObserver(func(e graph.Event[state]) {
+		phases = append(phases, e.Node+":"+string(e.Phase))
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := r.Start(ctx, "t", state{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Resume(ctx, "t", answer{OK: true}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"a:start", "a:done", "ask:start", "ask:paused", "ask:start", "ask:done", "b:start", "b:done", "__end__:end"}
+	if !slices.Equal(phases, want) {
+		t.Fatalf("phases %v, want %v", phases, want)
+	}
+}
+
 func TestValidate(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

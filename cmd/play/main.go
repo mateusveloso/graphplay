@@ -30,6 +30,7 @@ import (
 	"github.com/mateusveloso/graphplay/internal/baseline"
 	"github.com/mateusveloso/graphplay/internal/jev"
 	"github.com/mateusveloso/graphplay/internal/llm"
+	"github.com/mateusveloso/graphplay/internal/metrics"
 	"github.com/mateusveloso/graphplay/internal/player"
 	"github.com/mateusveloso/graphplay/internal/world"
 )
@@ -71,18 +72,18 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 }
 
 // app wires real dependencies. Tests build the same graph with fakes.
-func app(cfg player.Config) (*graph.Runner[player.State], error) {
+func app(cfg player.Config, meter *metrics.Meter) (*graph.Runner[player.State], error) {
 	w, err := world.Load(cfg.World)
 	if err != nil {
 		return nil, err
 	}
-	models, err := generative(cfg)
+	models, err := generative(cfg, meter)
 	if err != nil {
 		return nil, err
 	}
 	var decider jev.Decider = jev.None{}
 	if cfg.TypeSafeAPIKey != "" {
-		decider = jev.NewClient(cfg.TypeSafeAPIKey)
+		decider = jev.NewClient(cfg.TypeSafeAPIKey, meter)
 	}
 	store := graph.FileStore[player.State]{Dir: filepath.Join(cfg.StateDir, "runs")}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -90,20 +91,20 @@ func app(cfg player.Config) (*graph.Runner[player.State], error) {
 }
 
 // generative picks the provider of the two generative roles from Config.
-func generative(cfg player.Config) (llm.Models, error) {
+func generative(cfg player.Config, meter *metrics.Meter) (llm.Models, error) {
 	switch cfg.Provider {
 	case player.ProviderDeepSeek:
 		if cfg.DeepSeekAPIKey == "" {
 			return llm.Models{}, errors.New("DEEPSEEK_API_KEY is not set")
 		}
 		return llm.Models{
-			Small: llm.NewDeepSeek(cfg.DeepSeekAPIKey, cfg.ModelProposer),
-			Large: llm.NewDeepSeek(cfg.DeepSeekAPIKey, cfg.ModelSolver),
+			Small: llm.NewDeepSeek(cfg.DeepSeekAPIKey, cfg.ModelProposer, meter),
+			Large: llm.NewDeepSeek(cfg.DeepSeekAPIKey, cfg.ModelSolver, meter),
 		}, nil
 	case player.ProviderAnthropic:
 		return llm.Models{
-			Small: llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.ModelProposer),
-			Large: llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.ModelSolver),
+			Small: llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.ModelProposer, meter),
+			Large: llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.ModelSolver, meter),
 		}, nil
 	}
 	return llm.Models{}, fmt.Errorf("unknown provider %q", cfg.Provider)
@@ -140,7 +141,8 @@ func cmdRun(ctx context.Context, cfg player.Config, args []string, out io.Writer
 	if *thread == "" {
 		*thread = rand.Text()[:12]
 	}
-	r, err := app(cfg)
+	meter := metrics.New()
+	r, err := app(cfg, meter)
 	if err != nil {
 		return err
 	}
@@ -148,7 +150,7 @@ func cmdRun(ctx context.Context, cfg player.Config, args []string, out io.Writer
 	if err != nil {
 		return err
 	}
-	return report(out, cp)
+	return report(out, cp, meter)
 }
 
 func cmdResume(ctx context.Context, cfg player.Config, args []string, out io.Writer) error {
@@ -162,7 +164,8 @@ func cmdResume(ctx context.Context, cfg player.Config, args []string, out io.Wri
 	if len(positional) != 1 || (*stop && *command != "") {
 		return errors.New(`usage: play resume <thread> [-command "go north" | -stop]`)
 	}
-	r, err := app(cfg)
+	meter := metrics.New()
+	r, err := app(cfg, meter)
 	if err != nil {
 		return err
 	}
@@ -175,7 +178,7 @@ func cmdResume(ctx context.Context, cfg player.Config, args []string, out io.Wri
 	if err != nil {
 		return err
 	}
-	return report(out, cp)
+	return report(out, cp, meter)
 }
 
 // cmdBaseline plays without the graph: one model, one loop, same world, same mercy.
@@ -195,10 +198,11 @@ func cmdBaseline(ctx context.Context, cfg player.Config, args []string, out io.W
 		return err
 	}
 	lim := baseline.Limits{MaxTurns: cfg.MaxTurns, MaxDeaths: cfg.MaxDeaths}
+	meter := metrics.New()
 	var res baseline.Result
 	switch baseline.Mode(*mode) {
 	case baseline.ModeLLM:
-		models, err := generative(cfg)
+		models, err := generative(cfg, meter)
 		if err != nil {
 			return err
 		}
@@ -210,7 +214,7 @@ func cmdBaseline(ctx context.Context, cfg player.Config, args []string, out io.W
 		if cfg.TypeSafeAPIKey == "" {
 			return errors.New("TYPESAFE_API_KEY is not set")
 		}
-		res, err = baseline.PlayDecision(ctx, w, jev.NewClient(cfg.TypeSafeAPIKey), lim)
+		res, err = baseline.PlayDecision(ctx, w, jev.NewClient(cfg.TypeSafeAPIKey, meter), lim)
 		if err != nil {
 			return err
 		}
@@ -221,6 +225,7 @@ func cmdBaseline(ctx context.Context, cfg player.Config, args []string, out io.W
 	if err != nil {
 		return err
 	}
+	report += usageMarkdown(meter)
 	dir := filepath.Join(cfg.StateDir, "baselines", fmt.Sprintf("%s-%s-%s", cfg.World, *mode, *thread))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -233,8 +238,44 @@ func cmdBaseline(ctx context.Context, cfg player.Config, args []string, out io.W
 	if res.Won {
 		verdict = "won"
 	}
-	_, err = fmt.Fprintf(out, "\nbaseline %s on %s: %s in %d turns, %d deaths\nreport: %s\n", *mode, cfg.World, verdict, res.Turns, res.Deaths, path)
+	var b strings.Builder
+	fmt.Fprintf(&b, "\nbaseline %s on %s: %s in %d turns, %d deaths\n", *mode, cfg.World, verdict, res.Turns, res.Deaths)
+	b.WriteString(usageText(meter))
+	fmt.Fprintf(&b, "report: %s\n", path)
+	_, err = io.WriteString(out, b.String())
 	return err
+}
+
+// usageText is the meter as a terminal table.
+func usageText(meter *metrics.Meter) string {
+	rows := meter.Rows()
+	if len(rows) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("model usage:\n")
+	for _, r := range rows {
+		fmt.Fprintf(&b, "  %-18s %3d calls  %7d in  %6d out  %6.1fs", r.Model, r.Calls, r.InputTokens, r.OutputTokens, r.Duration.Seconds())
+		if r.Errors > 0 {
+			fmt.Fprintf(&b, "  (%d failed)", r.Errors)
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// usageMarkdown is the meter as a section appended to a report.
+func usageMarkdown(meter *metrics.Meter) string {
+	rows := meter.Rows()
+	if len(rows) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n## Model usage\n\n| model | calls | input tokens | output tokens | time |\n|---|---|---|---|---|\n")
+	for _, r := range rows {
+		fmt.Fprintf(&b, "| %s | %d | %d | %d | %.1fs |\n", r.Model, r.Calls, r.InputTokens, r.OutputTokens, r.Duration.Seconds())
+	}
+	return b.String()
 }
 
 func cmdDiagram(cfg player.Config, args []string, out io.Writer) error {
@@ -260,7 +301,7 @@ func cmdDiagram(cfg player.Config, args []string, out io.Writer) error {
 
 // report prints what the user needs next: the screen with resume commands, or the path of
 // the written game report and its layer summary.
-func report(out io.Writer, cp *graph.Checkpoint[player.State]) error {
+func report(out io.Writer, cp *graph.Checkpoint[player.State], meter *metrics.Meter) error {
 	var b strings.Builder
 	if !cp.Paused() {
 		s := cp.State
@@ -275,6 +316,14 @@ func report(out io.Writer, cp *graph.Checkpoint[player.State]) error {
 		for _, row := range s.Summary() {
 			fmt.Fprintf(&b, "  %-15s %d\n", row.Layer, row.Turns)
 		}
+		b.WriteString(usageText(meter))
+		if s.OutputPath != "" {
+			// The report knows who decided; the meter knows what it cost. Put them together.
+			if f, err := os.OpenFile(s.OutputPath, os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+				_, _ = io.WriteString(f, usageMarkdown(meter))
+				_ = f.Close()
+			}
+		}
 		fmt.Fprintf(&b, "report: %s\n", s.OutputPath)
 		_, err := io.WriteString(out, b.String())
 		return err
@@ -288,6 +337,7 @@ func report(out io.Writer, cp *graph.Checkpoint[player.State]) error {
 		return err
 	}
 	fmt.Fprintf(&b, "\n=== the graph needs you (%s) ===\n%s\n", screen.Why, body)
+	b.WriteString(usageText(meter))
 	fmt.Fprintf(&b, "\nthread:  %s\n", cp.Thread)
 	fmt.Fprintf(&b, "command: play resume %s -command \"go north\"\n", cp.Thread)
 	fmt.Fprintf(&b, "stop:    play resume %s -stop\n", cp.Thread)

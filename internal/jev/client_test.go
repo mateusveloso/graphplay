@@ -29,7 +29,7 @@ func TestDecideSendsPinnedModelAndParsesAnswers(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	c := NewClient("k")
+	c := NewClient("k", nil)
 	c.endpoint = srv.URL
 	answers, err := c.Decide(context.Background(), "the state", map[string]Question{"q": Noul("yes?", "Yes.", "No.")})
 	if err != nil {
@@ -46,7 +46,7 @@ func TestDecideReportsHTTPErrors(t *testing.T) {
 		http.Error(w, "nope", http.StatusTooManyRequests)
 	}))
 	t.Cleanup(srv.Close)
-	c := NewClient("k")
+	c := NewClient("k", nil)
 	c.endpoint = srv.URL
 	if _, err := c.Decide(context.Background(), "s", nil); err == nil {
 		t.Fatal("want an error on 429")
