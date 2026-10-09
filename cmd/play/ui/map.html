@@ -18,16 +18,17 @@
   header .spacer { flex: 1; }
   select, button { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: inherit; cursor: pointer; }
   button:disabled { opacity: .4; cursor: default; }
-  main { display: grid; grid-template-columns: 360px 1fr; grid-template-rows: 1fr 150px; gap: 12px; padding: 12px 16px; height: calc(100vh - 50px); }
+  main { display: grid; grid-template-columns: 420px 1fr; grid-template-rows: 1fr 150px; gap: 12px; padding: 12px 16px; height: calc(100vh - 50px); }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-height: 0; position: relative; }
   .panel h2 { margin: 0 0 8px; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
   #graph { grid-row: 1 / span 2; overflow: hidden; display: flex; flex-direction: column; }
-  #graph svg { width: auto; max-width: 100%; height: 58%; flex: none; margin: 0 auto; display: block; }
-  #nodes { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; font-size: 11px; line-height: 1.3; overflow: auto; }
-  #nodes .n { display: grid; grid-template-columns: 10px 84px 1fr; gap: 6px; align-items: baseline; padding: 1px 0; }
-  #nodes .n .sw { width: 10px; height: 10px; border-radius: 3px; position: relative; top: 1px; }
-  #nodes .n b { font-weight: 600; }
-  #nodes .n span:last-child { color: var(--dim); }
+  #graph #mermaid { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  #graph svg { width: auto; max-width: 100%; height: 100%; max-height: 100%; display: block; }
+  #graph .node { cursor: help; }
+  #tip { position: fixed; z-index: 9; pointer-events: none; display: none; max-width: 300px; background: #0e1116; border: 1px solid var(--line); border-left-width: 4px; border-radius: 8px; padding: 8px 12px; font-size: 12.5px; line-height: 1.4; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+  #tip b { display: block; font-size: 14px; margin-bottom: 2px; }
+  #tip .l { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
+  #tip.on { display: block; }
   #mapwrap { overflow: hidden; }
   #map { width: 100%; height: calc(100% - 22px); }
   #card { display: grid; grid-template-columns: 6px 1fr auto; gap: 14px; align-items: stretch; }
@@ -84,7 +85,8 @@
   <button id="pause" disabled>pause</button>
 </header>
 <main>
-  <section class="panel" id="graph"><h2 id="h-graph">graph</h2><div id="mermaid"></div><div id="nodes"></div></section>
+  <section class="panel" id="graph"><h2 id="h-graph">graph</h2><div id="mermaid"></div></section>
+  <div id="tip"></div>
   <section class="panel" id="mapwrap"><h2 id="h-map">map</h2><div id="legend"></div><svg id="map"></svg>
     <div id="hold"></div>
     <div id="gate"><span id="gate-why"></span><input id="cmd" autocomplete="off"><button id="send">send</button><button id="stop">stop</button></div>
@@ -107,7 +109,7 @@ const T = {
         layers: { code: "code", "decision-model": "decision model", "small-llm": "small model", "large-llm": "large model", human: "human" },
         refused: "refused", safe: "safe", died: "died, reloaded", risk: "risk", danger: "danger", protected: "protected",
         rules: { "new room; looking closely": "new room: look around first", "walking to the frontier": "walking the known map to the frontier", "walking to the exit code refused": "walking to the exit it refused, to ask the models there", "only legal proposal": "the only legal proposal" },
-        nodes: { observe: "code · refresh what the player sees", assess: "decision model · danger per exit", cheap_move: "code · items, look, safe exits, map", propose: "small model · candidate commands", rank: "decision model picks · large if unsure", solve: "large model · the riddle", act: "code · apply; death reloads", gate: "human · after deaths or stalls", finalize: "code · write the report" },
+        nodes: { observe: "Replays the command log and refreshes what the player sees. No model.", assess: "On a new room, or a changed inventory: what kind of place is this, and per exit, is a danger described and does the inventory cover it. Probabilities, read by code.", cheap_move: "The deterministic policy: take what is visible, look once on arrival, explore a safe exit, walk the known map to the frontier, or walk to the exit it refused. Most turns end here.", propose: "Only when code has no safe move: three to five candidate commands. Bounded output, cheap to get wrong.", rank: "Code drops illegal candidates; the decision model picks among the rest; if it is not confident, the large model reads the room and chooses.", solve: "A riddle is posed: the large model answers it. The only node that needs real reading.", act: "Applies the command to the engine and learns from the outcome. A death rolls the log back one step and is remembered with the inventory it happened with.", gate: "A human is asked, after three deaths, eight idle turns or three wrong answers. The run is checkpointed and waits.", finalize: "Writes the report: who decided each turn, what each model cost." },
         reading: "reads the prose of the room", asksTwo: "two statements per exit: is a danger described, does the inventory cover it",
         riddle: "reads the riddle", proposing: "proposes commands", choosing: "chooses among the proposals", human: "a human decides", error: "error",
         pause: "pause", resume: "continue", held: "paused between nodes", legend: { safe: "safe exit", danger: "refused exit (risk ≥ threshold)", unknown: "exit not yet assessed", walked: "exit walked", skull: "a death here", player: "the player", lock: "riddle door", hazard: "hazard" } },
@@ -116,7 +118,7 @@ const T = {
         layers: { code: "código", "decision-model": "modelo de decisão", "small-llm": "modelo pequeno", "large-llm": "modelo grande", human: "humano" },
         refused: "recusado", safe: "seguro", died: "morreu, recarregou", risk: "risco", danger: "perigo", protected: "proteção",
         rules: { "new room; looking closely": "sala nova: olhar com atenção primeiro", "walking to the frontier": "andando pelo mapa conhecido até a fronteira", "walking to the exit code refused": "andando até a saída que recusou, pra perguntar aos modelos lá", "only legal proposal": "a única proposta legal" },
-        nodes: { observe: "código · atualiza o que o jogador vê", assess: "modelo de decisão · perigo por saída", cheap_move: "código · itens, olhar, saídas seguras, mapa", propose: "modelo pequeno · comandos candidatos", rank: "modelo de decisão escolhe · grande se inseguro", solve: "modelo grande · o enigma", act: "código · aplica; morte recarrega", gate: "humano · após mortes ou travas", finalize: "código · escreve o relatório" },
+        nodes: { observe: "Refaz o log de comandos e atualiza o que o jogador vê. Sem modelo.", assess: "Em sala nova, ou com inventário novo: que tipo de lugar é, e por saída, há perigo descrito e o inventário cobre. Probabilidades, lidas por código.", cheap_move: "A política determinística: pegar o que está visível, olhar uma vez ao chegar, explorar uma saída segura, andar pelo mapa conhecido até a fronteira, ou ir até a saída que recusou. A maioria dos turnos termina aqui.", propose: "Só quando o código não tem jogada segura: de três a cinco comandos candidatos. Saída limitada, barato errar.", rank: "Código descarta candidatos ilegais; o modelo de decisão escolhe entre os que sobram; se não tem confiança, o modelo grande lê a sala e escolhe.", solve: "Um enigma foi posto: o modelo grande responde. O único nó que precisa de leitura de verdade.", act: "Aplica o comando no motor e aprende com o resultado. Morte volta o log um passo e fica lembrada com o inventário da hora.", gate: "Um humano é chamado, depois de três mortes, oito turnos parados ou três respostas erradas. O run fica salvo esperando.", finalize: "Escreve o relatório: quem decidiu cada turno, quanto cada modelo custou." },
         reading: "lê a prosa da sala", asksTwo: "duas afirmações por saída: há perigo descrito, o inventário cobre",
         riddle: "lê o enigma", proposing: "propõe comandos", choosing: "escolhe entre as propostas", human: "um humano decide", error: "erro",
         pause: "pausar", resume: "continuar", held: "pausado entre nós", legend: { safe: "saída segura", danger: "saída recusada (risco ≥ limiar)", unknown: "saída ainda não avaliada", walked: "saída percorrida", skull: "uma morte aqui", player: "o jogador", lock: "porta com enigma", hazard: "perigo" } },
@@ -148,13 +150,28 @@ let renderSeq = 0;
 // which layer each node belongs to; the box borders take the layer colour so the graph and
 // the threads speak the same language
 const nodeLayer = { observe: "code", cheap_move: "code", act: "code", finalize: "code", assess: "decision-model", propose: "small-llm", rank: "decision-model", solve: "large-llm", gate: "human" };
-$("#nodes").innerHTML = Object.entries(nodeLayer).map(([n, l]) => `<div class="n"><span class="sw" style="background:${colorOf[l]}"></span><b>${n}</b><span>${esc(T.nodes[n])}</span></div>`).join("");
+// hovering a box of the graph explains the node: its layer, in the layer's colour, and what it does
+function wireTooltips() {
+  const tip = $("#tip");
+  for (const node of document.querySelectorAll("#mermaid .node")) {
+    const name = Object.keys(nodeLayer).find((n) => node.id.includes(`-${n}-`));
+    if (!name) continue;
+    node.addEventListener("mouseenter", () => {
+      const l = nodeLayer[name];
+      tip.style.borderLeftColor = colorOf[l];
+      tip.innerHTML = `<b>${esc(name)}</b><div class="l" style="color:${colorOf[l]}">${esc(whoName(l))}</div>${esc(T.nodes[name])}`;
+      tip.classList.add("on");
+    });
+    node.addEventListener("mousemove", (ev) => { tip.style.left = `${Math.min(ev.clientX + 16, window.innerWidth - 320)}px`; tip.style.top = `${ev.clientY + 16}px`; });
+    node.addEventListener("mouseleave", () => tip.classList.remove("on"));
+  }
+}
 async function drawGraph(active) {
   const dark = "\n\tclassDef default fill:#1f2630,stroke:#8b949e,color:#d7dde6;\n\tclassDef first fill:#1f2630,stroke:#8b949e,color:#d7dde6;\n\tclassDef last fill:#2a2440,stroke:#a78bfa,color:#d7dde6;\n"
     + Object.entries(colorOf).map(([l, c]) => `\tclassDef L_${l.replace("-", "_")} fill:#1f2630,stroke:${c},stroke-width:2px,color:#d7dde6;\n`).join("")
     + Object.entries(nodeLayer).map(([n, l]) => `\tclass ${n} L_${l.replace("-", "_")};\n`).join("");
   const text = diagram + dark + (active ? `\tclassDef active fill:#f2cc60,color:#111,stroke:#f2cc60,stroke-width:2px;\n\tclass ${active} active;\n` : "");
-  try { const { svg } = await mermaid.render("g" + (++renderSeq), text); $("#mermaid").innerHTML = svg; } catch (e) { $("#mermaid").textContent = e.message; }
+  try { const { svg } = await mermaid.render("g" + (++renderSeq), text); $("#mermaid").innerHTML = svg; wireTooltips(); } catch (e) { $("#mermaid").textContent = e.message; }
 }
 await drawGraph(null);
 function graphNodeRect(name) {
