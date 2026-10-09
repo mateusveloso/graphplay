@@ -47,6 +47,9 @@ var ErrNotFound = errors.New("graph: thread not found")
 // ErrNotPaused is returned by Resume when the thread has nothing to resume.
 var ErrNotPaused = errors.New("graph: thread is not paused")
 
+// ErrDone is returned by Continue when the thread already reached End.
+var ErrDone = errors.New("graph: thread is done")
+
 // Runner executes a Graph against a Store.
 type Runner[S any] struct {
 	graph *Graph[S]
@@ -90,6 +93,23 @@ func (r *Runner[S]) Resume(ctx context.Context, thread string, value any) (*Chec
 		return nil, fmt.Errorf("%w: %s", ErrNotPaused, thread)
 	}
 	ctx = context.WithValue(ctx, resumeKey, &resumeBox{value: value})
+	return r.run(ctx, cp)
+}
+
+// Continue picks up a thread whose last node failed, from that node. The checkpoint saved
+// after the previous successful node is the retry point; nothing is re-executed. This is
+// how a run survives an expired token or a provider outage.
+func (r *Runner[S]) Continue(ctx context.Context, thread string) (*Checkpoint[S], error) {
+	cp, err := r.store.Load(ctx, thread)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case cp.Done:
+		return nil, fmt.Errorf("%w: %s", ErrDone, thread)
+	case cp.Paused():
+		return nil, fmt.Errorf("graph: thread %s is paused; use Resume", thread)
+	}
 	return r.run(ctx, cp)
 }
 

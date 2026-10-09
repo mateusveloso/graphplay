@@ -4,6 +4,7 @@
 //	play run -world cellar -thread t1
 //	play resume <thread> -command "go north"
 //	play resume <thread> -stop
+//	play resume <thread>             continue a run that stopped on an error
 //	play diagram                     print the graph as Mermaid
 //
 // Flags may come before or after the positional argument.
@@ -133,14 +134,19 @@ func cmdResume(ctx context.Context, cfg player.Config, args []string, out io.Wri
 	if err != nil {
 		return err
 	}
-	if len(positional) != 1 || *stop == (*command != "") {
-		return errors.New(`usage: play resume <thread> (-command "go north" | -stop)`)
+	if len(positional) != 1 || (*stop && *command != "") {
+		return errors.New(`usage: play resume <thread> [-command "go north" | -stop]`)
 	}
 	r, err := app(cfg)
 	if err != nil {
 		return err
 	}
-	cp, err := r.Resume(ctx, positional[0], player.Decision{Command: *command, Stop: *stop})
+	var cp *graph.Checkpoint[player.State]
+	if *stop || *command != "" {
+		cp, err = r.Resume(ctx, positional[0], player.Decision{Command: *command, Stop: *stop})
+	} else {
+		cp, err = r.Continue(ctx, positional[0]) // no decision given: retry where it broke
+	}
 	if err != nil {
 		return err
 	}

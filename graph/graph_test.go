@@ -141,6 +141,42 @@ func TestResumeErrors(t *testing.T) {
 	})
 }
 
+func TestContinueRetriesTheFailedNode(t *testing.T) {
+	t.Parallel()
+	attempts := 0
+	flaky := func(_ context.Context, s *state) error {
+		attempts++
+		if attempts == 1 {
+			return errors.New("provider down")
+		}
+		s.Visited = append(s.Visited, "flaky")
+		return nil
+	}
+	g := graph.New[state]().
+		Node("a", visit("a")).
+		Node("flaky", flaky).
+		Entry("a").
+		Edge("a", "flaky").
+		Edge("flaky", graph.End)
+	store := &graph.MemoryStore[state]{}
+	r, _ := graph.NewRunner(g, store)
+	ctx := context.Background()
+
+	if _, err := r.Start(ctx, "t", state{}); err == nil {
+		t.Fatal("first attempt should fail")
+	}
+	cp, err := r.Continue(ctx, "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cp.Done || !slices.Equal(cp.State.Visited, []string{"a", "flaky"}) {
+		t.Fatalf("want a completed run without re-running a, got %+v", cp.State)
+	}
+	if _, err := r.Continue(ctx, "t"); !errors.Is(err, graph.ErrDone) {
+		t.Fatalf("want ErrDone, got %v", err)
+	}
+}
+
 func TestValidate(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

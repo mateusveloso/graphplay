@@ -62,6 +62,7 @@ whole control plane:
 - `Graph[S]`: named nodes, fixed `Edge`s, and `Route`s whose targets are declared so the
   diagram can draw them and the runner can reject a router that wanders off.
 - `Runner[S]`: executes nodes, checkpoints after every one, records how long each took.
+  `Continue` retries a run from the node that failed.
 - `Interrupt[T](ctx, payload)`: pauses the run with a payload; on resume the node runs again
   and receives a typed answer. A resume value of the wrong type is an error, not a panic.
 - `Store[S]`: `FileStore` writes one JSON file per thread with an atomic rename (a save game
@@ -123,7 +124,9 @@ stop:    play resume k3fj2m9qpz1a -stop
 ```
 
 Resume whenever you want, from any shell. The save game is one JSON file per thread under
-`.play/runs/`. The report lands next to it as `game.md`.
+`.play/runs/`. The report lands next to it as `game.md`. If a run dies on an external error
+(an expired key, a provider outage), `play resume <thread>` with no flags continues from the
+node that failed; nothing before it is re-executed.
 
 Without `TYPESAFE_API_KEY` every exit is treated as safe: code explores everything, dies,
 reloads, remembers, and still wins. The ledger then shows what the decision model would have
