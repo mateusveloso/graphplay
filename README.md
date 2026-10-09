@@ -13,8 +13,20 @@ that can decide it, and writes down who decided. The final table is the point:
 | **large LLM** | real reading | the riddle on the carved door, and nothing else |
 | **human** | a gate, not a chat | after three deaths, eight idle turns or three wrong answers: the run pauses, saves, and waits |
 
-A clean run of the bundled world ends with something like "22 turns: 17 code, 3 decision model,
-1 small LLM, 1 large LLM". That number, not the game, is what this repository is about.
+A clean run of the bundled `caverns` world ends like this:
+
+| player | won | turns | deaths | large-model calls | decision-model calls |
+|---|---|---|---|---|---|
+| **the graph** | yes | 29 | 0 | 2 (722 in / 881 out tokens, 13 s) | 18 (13k in, 5.7 s) |
+| one large LLM alone, full transcript as memory | yes | 49 | 0 | 49 | 0 |
+| one decision model alone, over the legal commands | no | 34 (stopped at 3 deaths) | 3 | 0 | 34 |
+
+Same world, same turn budget, same mercy on death (a reload). The LLM alone does solve it: it
+also spends twenty of its turns walking between two rooms, and pays for a large-model call on
+every one of them. The decision model alone cannot type an answer to a riddle, so it never
+can. The graph puts each decision where it is cheapest and asks the large model twice, for the
+two riddles. Those numbers, not the game, are what this repository is about. The reports are
+written by `play run` and `play baseline`; see "Run it".
 
 ```mermaid
 graph TD;
@@ -80,21 +92,23 @@ exposes the map, and dangers live in the prose ("from the west you hear slow, he
 not in structured fields. That is what forces reading. Every game is replayable from its command
 log, which is why death is cheap: **reload is a replay without the fatal command.**
 
-The bundled world, [`cellar`](internal/world/worlds/cellar.json): seven rooms, a lantern, a coin,
-a passage that kills you in the dark, a troll who takes the coin or you, a door that asks a riddle,
-and a chest.
+Two bundled worlds. [`cellar`](internal/world/worlds/cellar.json): seven rooms, a lantern in the
+first one, a passage that kills you in the dark, a troll who takes the coin or you, a riddle door,
+a chest. [`caverns`](internal/world/worlds/caverns.json): eleven rooms, the lantern off the direct
+path, an exit that only `look` reveals, two riddles, a toll bridge, and a chest. The cellar is
+good for a first run; the caverns are where the layers earn their keep.
 
 ## The player
 
 | node | layer | what it does |
 |---|---|---|
 | `observe` | code | replays the command log and refreshes what the player sees |
-| `assess` | decision | on a new room (or a changed inventory): one `choice` for the kind of place, one `noul` per exit for "walking through this now is lethal". Probabilities stored on the map. |
-| `cheap_move` | code | take what is visible; explore a safe unexplored exit; or walk the known map (BFS) towards the nearest room that still has one. Most turns end here. |
+| `assess` | decision | on a new room, or the same room with a new inventory: one `choice` for the kind of place and, per exit, two `noul`s: "the text describes a lethal danger that way" and "the inventory covers it". Code combines them into `risk = danger × (1 − protected)` and keeps every assessment in the room's history. |
+| `cheap_move` | code | take what is visible; explore a safe unexplored exit; walk the known map (BFS) to the nearest room that still has one; when the frontier is gone, `look` in rooms not yet looked at. Most turns end here. |
 | `propose` | small LLM | only when code has nothing: 3 to 5 candidate commands |
 | `rank` | code, then decision | drop illegal and already-failed candidates; one left needs no model; several: Jev picks |
 | `solve` | large LLM | a riddle is posed: answer it. The only node that needs real reading. |
-| `act` | code | run the command; learn where the exit led; on death, roll the log back one step and remember the command as fatal here |
+| `act` | code | run the command; learn where the exit led; on death, roll the log back one step and remember the command as fatal here, with the inventory it was fatal with |
 | `gate` | human | `Interrupt` with the screen and the reason; resume with a command or stop |
 | `finalize` | code | write `game.md`: the layer table and every turn |
 
@@ -105,11 +119,17 @@ moves), and the expensive nodes only run when the cheap ones had nothing to say.
 Prompts are `text/template` files in [`internal/player/prompts/`](internal/player/prompts/),
 embedded at build time.
 
+Why two questions per exit instead of "is it lethal now?": asked the combined question, the
+decision model answered around 0.4 for an unlit tunnel whether or not the player carried a
+lantern. Asked the two halves, it separates them (danger 0.45 either way; protected 0.02
+without the lantern, 0.44 with it, 0.85 with lantern and coin). The threshold of 0.3 was read
+off those numbers, not guessed. One factor per question is also what the vendor recommends.
+
 ## Run it
 
 ```bash
-cp .env.example .env            # models per role, API keys, thresholds
-go run ./cmd/play run
+cp .env.example .env            # provider, API keys, thresholds
+go run ./cmd/play run -world caverns
 ```
 
 The graph plays until it wins, hits the turn limit, or needs you:
@@ -127,6 +147,29 @@ Resume whenever you want, from any shell. The save game is one JSON file per thr
 `.play/runs/`. The report lands next to it as `game.md`. If a run dies on an external error
 (an expired key, a provider outage), `play resume <thread>` with no flags continues from the
 node that failed; nothing before it is re-executed.
+
+### Watch it
+
+```bash
+go run ./cmd/play serve         # then open http://127.0.0.1:8080
+```
+
+One page: the graph with the active node lit, what the player sees, what the current layer is
+doing (and, for the riddle, the model's reasoning), the ledger and the model usage filling in
+as the game runs. When the graph needs a human, the page asks. It is the runner's observer
+streamed over Server-Sent Events; the only dependency is Mermaid from a CDN, in the page.
+
+### Compare it
+
+```bash
+go run ./cmd/play baseline -mode llm -world caverns        # one large model, no graph
+go run ./cmd/play baseline -mode decision -world caverns   # one decision model, no graph
+```
+
+Both write the same shape of report as the graph, with the same model-usage table, under
+`.play/baselines/`. That is where the comparison table at the top comes from.
+
+### Providers
 
 `PLAY_PROVIDER` picks who plays the two generative roles: `deepseek` (default; `deepseek-flash`
 proposes, `deepseek-v4-pro` solves, through the OpenAI-compatible endpoint with JSON mode) or
@@ -153,11 +196,15 @@ bundled world is the riddle; `play resume <thread>` continues from there once th
 - **Humans are a gate, not a chat.** `Interrupt` pauses the graph with a checkpoint. The
   human's command runs through the same `act` node as everyone else's and is counted in the
   same ledger.
+- **Measured, not asserted.** Every adapter records calls, tokens and time into a meter; the
+  report ends with that table. The baselines exist so the graph's numbers have something to
+  stand next to.
 - **Fakes make it testable.** Nodes receive the models, the decider and the world as values or
   interfaces. [`internal/player`](internal/player/) runs whole games with scripted answers
   under the race detector in well under a second: a code-only win, death and reload, the risk
-  assessment preventing a death, the proposal path, the decision model choosing among
-  proposals, the riddle budget handing over to a human, the human stopping the run.
+  assessment preventing a death, a refused exit reconsidered after a new item, the hidden exit
+  found by `look`, the proposal path, the decision model choosing among proposals, the riddle
+  budget handing over to a human, the human stopping the run.
 
 ```bash
 make test       # go test -race ./...
@@ -168,10 +215,12 @@ make diagram    # regenerates docs/graph.mmd; CI fails if it drifts
 ## Layout
 
 ```
-cmd/play/              CLI: run / resume / diagram
-graph/                 the control plane: Graph, Runner, Interrupt, Store, Mermaid
+cmd/play/              CLI: run / resume / diagram / baseline / serve (+ ui/index.html)
+graph/                 the control plane: Graph, Runner, Interrupt, Store, Observer, Mermaid
 internal/world/        the engine and its worlds/*.json
 internal/player/       the agent: State, nodes, routing, Config, prompts/*.tmpl
+internal/baseline/     the same worlds without the graph: one LLM, one decision model
+internal/metrics/      calls, tokens and time per model
 internal/jev/          Decider interface + System One client + question builders
 internal/llm/          Model interface; Anthropic (structured outputs) and OpenAI-compatible (JSON mode) adapters
 docs/graph.mmd         generated
