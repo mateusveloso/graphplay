@@ -1,0 +1,139 @@
+{
+  "id": "caverns",
+  "start": "camp",
+  "goal_text": "The chest is heavier than it looks. Behind you the caverns go quiet, as if they had been waiting to be solved.",
+  "items": {
+    "lantern": {
+      "name": "oil lantern",
+      "description": "A dented oil lantern. It still lights."
+    },
+    "coin": {
+      "name": "silver coin",
+      "description": "A heavy silver coin stamped with a bridge."
+    }
+  },
+  "rooms": {
+    "camp": {
+      "name": "Cold Camp",
+      "description": "The ashes of a fire, a torn bedroll, a dripping ceiling. Whoever camped here left in a hurry. A wide passage leads north into the hill; a narrower one goes west, where you hear water.",
+      "exits": {
+        "north": "hall",
+        "west": "cistern"
+      }
+    },
+    "cistern": {
+      "name": "Cistern",
+      "description": "A round pool of black water fills the room from wall to wall. Nothing floats in it and nothing lies beside it. The only way is back east.",
+      "exits": {
+        "east": "camp"
+      }
+    },
+    "hall": {
+      "name": "Pillared Hall",
+      "description": "Six pillars hold up a ceiling you cannot see. To the north the hall ends in a tunnel that swallows all light; the air from it is cold and smells of deep stone. A low door stands west, a wide arch east, and the camp is south.",
+      "exits": {
+        "north": "dark_tunnel",
+        "west": "shrine",
+        "east": "gallery",
+        "south": "camp"
+      }
+    },
+    "shrine": {
+      "name": "Shrine",
+      "description": "A niche with a cracked statue of a seated figure. On the altar before it someone left an oil lantern. The door back east is the only exit.",
+      "exits": {
+        "east": "hall"
+      },
+      "items": [
+        "lantern"
+      ]
+    },
+    "gallery": {
+      "name": "Painted Gallery",
+      "description": "Faded paintings of a procession cover the walls, all of them walking toward the floor at the far end, where the flagstones are newer than the rest and a thin draft rises between them. The arch back west is the only exit you can see.",
+      "exits": {
+        "west": "hall"
+      },
+      "hidden": {
+        "down": {
+          "to": "crypt",
+          "reveal": "You kneel where the painted figures point. One flagstone rocks under your hand; beneath it, steps lead down."
+        }
+      }
+    },
+    "crypt": {
+      "name": "Crypt",
+      "description": "Stone shelves hold the dead in neat rows. At the north end a bronze door shows a single carved footprint, and words run along its lintel. Steps lead back up.",
+      "exits": {
+        "up": "gallery",
+        "north": "vault"
+      },
+      "locks": {
+        "north": {
+          "riddle": "The more of me you take, the more of me you leave behind. What am I?",
+          "answer": "footsteps",
+          "closed": "The lintel speaks the riddle. The bronze door stays shut.",
+          "opened": "The carved footprint sinks into the bronze. The door opens."
+        }
+      }
+    },
+    "vault": {
+      "name": "Toll Vault",
+      "description": "A small vault, empty but for a stone hand holding out a single silver coin stamped with a bridge. The door back south is the only way.",
+      "exits": {
+        "south": "crypt"
+      },
+      "items": [
+        "coin"
+      ]
+    },
+    "dark_tunnel": {
+      "name": "Dark Tunnel",
+      "description": "Your light shows a tunnel cut through black rock, the floor split by a crevice you step across. Ahead, north, the tunnel opens onto a bridge, and from there comes slow, heavy breathing and the clink of a chain. South is the hall.",
+      "dark": true,
+      "death": "You walk into the dark with your hands out. The floor ends before your hands find anything.",
+      "exits": {
+        "north": "bridge",
+        "south": "hall"
+      }
+    },
+    "bridge": {
+      "name": "Toll Bridge",
+      "description": "A stone bridge over a drop you cannot see the bottom of, and on it a troll with a chain around one ankle and an open hand the size of a shield. He does not speak. He waits. North, past him, a doorway; south, the tunnel.",
+      "hazard": {
+        "requires": "coin",
+        "consumes": true,
+        "pass": "The troll closes his hand on the coin, bites it, and steps aside.",
+        "death": "The troll's hand closes on you instead."
+      },
+      "exits": {
+        "north": "antechamber",
+        "south": "dark_tunnel"
+      }
+    },
+    "antechamber": {
+      "name": "Antechamber",
+      "description": "A square room with a door of green stone to the east, carved with coasts and rivers and tiny towers. Words are cut above it. The bridge is back south.",
+      "exits": {
+        "south": "bridge",
+        "east": "treasury"
+      },
+      "locks": {
+        "east": {
+          "riddle": "I have cities but no houses, forests but no trees, and water but no fish. What am I?",
+          "answer": "map",
+          "closed": "The green door asks its question and does not move.",
+          "opened": "The carved coasts slide apart. The door opens."
+        }
+      }
+    },
+    "treasury": {
+      "name": "Treasury",
+      "description": "A chest on a plinth, and nothing else.",
+      "goal": true,
+      "exits": {
+        "west": "antechamber"
+      }
+    }
+  }
+}

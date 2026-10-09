@@ -13,6 +13,6 @@ A riddle is posed: {{.}}{{end}}
 {{- end}}
 
 {{define "memory" -}}
-{{with index .Fatal .Obs.Room}}Commands that killed you here: {{join . ", "}}
+{{with index .Fatal .Obs.Room}}Commands that killed you here: {{range .}}"{{.Command}}" (carrying: {{if .Inventory}}{{join .Inventory ", "}}{{else}}nothing{{end}}) {{end}}
 {{end}}{{with index .Tried .Obs.Room}}Commands that did nothing here: {{join . ", "}}
 {{end}}{{- end}}

@@ -46,6 +46,27 @@ func TestAskSendsJSONModeWithSchemaAndParsesTheReply(t *testing.T) {
 	}
 }
 
+func TestAskRetriesEmptyCompletions(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		if calls == 1 {
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":""}}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"word\":\"ok\",\"score\":1}"}}]}`))
+	}))
+	t.Cleanup(srv.Close)
+	var got answer
+	if err := NewOpenAICompat(srv.URL, "k", "m").Ask(context.Background(), "s", "u", &got); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || got.Word != "ok" {
+		t.Fatalf("calls=%d got=%+v", calls, got)
+	}
+}
+
 func TestAskReportsProviderErrorsAndBadJSON(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
@@ -53,9 +74,8 @@ func TestAskReportsProviderErrorsAndBadJSON(t *testing.T) {
 		body   string
 		want   string
 	}{
-		"http error":   {http.StatusUnauthorized, `{"error":{"message":"invalid key"}}`, "401"},
-		"empty choice": {http.StatusOK, `{"choices":[]}`, "empty completion"},
-		"not json":     {http.StatusOK, `{"choices":[{"message":{"content":"sure!"}}]}`, "not the expected json"},
+		"http error": {http.StatusUnauthorized, `{"error":{"message":"invalid key"}}`, "401"},
+		"not json":   {http.StatusOK, `{"choices":[{"message":{"content":"sure!"}}]}`, "not the expected json"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

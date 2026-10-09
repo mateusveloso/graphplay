@@ -36,13 +36,17 @@ var kinds = map[string]string{
 	"goal":     "The objective of the game.",
 }
 
-// assess asks the decision model what a careful player would infer from the prose: what
-// kind of place this is, and for each exit, whether walking through it right now is lethal.
-// The answers are probabilities read by code; nothing here generates text.
+// assess asks the decision model what a careful player would infer from the prose. One
+// choice for the kind of place, and per exit two yes/no statements that code combines:
+// is a danger described that way, and does the player carry what it takes. Splitting the
+// judgment is what makes the probabilities usable; "is it lethal now?" asks the model to
+// weigh two things at once and it answers somewhere in the middle.
 func assess(decider jev.Decider) graph.Node[State] {
 	return func(ctx context.Context, s *State) error {
 		k := s.here()
 		k.Assessed, k.AssessedWith = true, slices.Clone(s.Obs.Inventory)
+		k.Danger = make(map[string]float64, len(s.Obs.Exits))
+		k.Protected = make(map[string]float64, len(s.Obs.Exits))
 		k.Risk = make(map[string]float64, len(s.Obs.Exits))
 
 		state, err := assessPrompt.render("state", s)
@@ -51,10 +55,15 @@ func assess(decider jev.Decider) graph.Node[State] {
 		}
 		questions := map[string]jev.Question{"kind": jev.Choice("What kind of place is this?", kinds)}
 		for _, dir := range s.Obs.Exits {
-			questions["exit_"+dir] = jev.Noul(
-				fmt.Sprintf("Going %s from here right now, with the current inventory, would likely kill the player.", dir),
-				"The text warns of a danger in that direction the player is not equipped for.",
-				"Nothing in the text suggests that direction is lethal, or the player carries what it takes.",
+			questions["danger_"+dir] = jev.Noul(
+				fmt.Sprintf("The text describes something in the %s direction that would kill an unprepared player (darkness, a pit, a creature, a drop).", dir),
+				"The description points to a lethal danger that way.",
+				"Nothing in the description suggests that way is dangerous.",
+			)
+			questions["protected_"+dir] = jev.Noul(
+				fmt.Sprintf("The player's inventory contains what is needed to survive whatever lies %s (a light for darkness, a payment for a toll-taker).", dir),
+				"The inventory listed covers the danger described that way.",
+				"The inventory is empty or does not address that danger.",
 			)
 		}
 		answers, err := decider.Decide(ctx, state, questions)
@@ -63,16 +72,26 @@ func assess(decider jev.Decider) graph.Node[State] {
 		}
 		k.Kind = answers["kind"].Choice
 		for _, dir := range s.Obs.Exits {
-			if a, ok := answers["exit_"+dir]; ok && a.Noul != nil {
-				k.Risk[dir] = *a.Noul
-			}
+			danger, protected := probability(answers, "danger_"+dir), probability(answers, "protected_"+dir)
+			k.Danger[dir], k.Protected[dir] = danger, protected
+			k.Risk[dir] = danger * (1 - protected)
 		}
 		return nil
 	}
 }
 
-// cheapMove is the deterministic policy. In order: take what is visible, explore a safe
-// unexplored exit here, or walk the known map towards the nearest room that still has one.
+// probability reads a noul answer; a missing one is maximum uncertainty, not a pass.
+func probability(answers map[string]jev.Answer, key string) float64 {
+	if a, ok := answers[key]; ok && a.Noul != nil {
+		return *a.Noul
+	}
+	return 0.5
+}
+
+// cheapMove is the deterministic policy, in order: take what is visible; explore a safe
+// unexplored exit here; walk the known map towards the nearest room that still has one;
+// when the frontier is gone, look closely at rooms not yet looked at, nearest first. Every
+// text-adventure player does these without thinking, so they cost nothing here either.
 // When it returns nothing, the models earn their turn.
 func cheapMove(cfg Config) graph.Node[State] {
 	return func(_ context.Context, s *State) error {
@@ -84,8 +103,19 @@ func cheapMove(cfg Config) graph.Node[State] {
 			s.Chosen = &Choice{Command: world.Go + " " + dir, Layer: LayerCode}
 			return nil
 		}
-		if dir, ok := s.stepTowardsFrontier(cfg); ok {
-			s.Chosen = &Choice{Command: world.Go + " " + dir, Layer: LayerCode, Note: "walking the known map"}
+		if dir, ok := s.stepTowards(func(room string) bool {
+			_, ok := s.safeUnexploredExit(room, cfg)
+			return ok
+		}); ok {
+			s.Chosen = &Choice{Command: world.Go + " " + dir, Layer: LayerCode, Note: "walking to the frontier"}
+			return nil
+		}
+		if !s.here().Looked {
+			s.Chosen = &Choice{Command: world.Look, Layer: LayerCode, Note: "frontier exhausted; looking closely"}
+			return nil
+		}
+		if dir, ok := s.stepTowards(func(room string) bool { return !s.Map[room].Looked }); ok {
+			s.Chosen = &Choice{Command: world.Go + " " + dir, Layer: LayerCode, Note: "walking to a room not yet looked at"}
 		}
 		return nil
 	}
@@ -93,9 +123,9 @@ func cheapMove(cfg Config) graph.Node[State] {
 
 // propose asks the small model for candidate commands. Bounded output, cheap to get wrong:
 // rank filters it and the engine ignores nonsense.
-func propose(model llm.Model) graph.Node[State] {
+func propose(model llm.Model, cfg Config) graph.Node[State] {
 	return func(ctx context.Context, s *State) error {
-		view := proposeView{State: s, Unexplored: s.frontier()}
+		view := proposeView{State: s, Unexplored: s.frontier(), Refused: s.refused(cfg)}
 		user, err := proposePrompt.render("user", view)
 		if err != nil {
 			return err
@@ -184,7 +214,10 @@ func act(w world.World) graph.Node[State] {
 		if after.Dead {
 			s.Deaths++
 			s.Commands = s.Commands[:len(s.Commands)-1]
-			s.Fatal = appendTo(s.Fatal, before.Room, cmd.String())
+			if s.Fatal == nil {
+				s.Fatal = make(map[string][]Death)
+			}
+			s.Fatal[before.Room] = append(s.Fatal[before.Room], Death{Command: cmd.String(), Inventory: slices.Clone(before.Inventory)})
 			entry.Died = true
 			s.record(entry)
 			return nil
@@ -204,6 +237,17 @@ func act(w world.World) graph.Node[State] {
 			entry.Progress = true
 		case cmd.Verb == world.Answer && before.Riddle != "" && after.Riddle == "":
 			entry.Progress = true
+		case cmd.Verb == world.Look:
+			s.here().Looked = true
+			if len(after.Exits) > len(before.Exits) {
+				s.Obs = after // a revealed exit must reach the map before the next cheap move
+				for _, dir := range after.Exits {
+					if _, known := s.here().Exits[dir]; !known {
+						s.here().Exits[dir] = ""
+					}
+				}
+				entry.Progress = true
+			}
 		default:
 			// Nothing changed: remember so neither code nor models repeat it here.
 			if cmd.Verb != world.Go || after.Riddle == "" {
@@ -275,9 +319,9 @@ func (s *State) safeUnexploredExit(room string, cfg Config) (string, bool) {
 	return "", false
 }
 
-// stepTowardsFrontier walks the known map (breadth-first) to the nearest room that still
-// has a safe unexplored exit and returns the first step.
-func (s *State) stepTowardsFrontier(cfg Config) (string, bool) {
+// stepTowards walks the known map (breadth-first) to the nearest room other than the
+// current one that satisfies want, and returns the first step of that walk.
+func (s *State) stepTowards(want func(room string) bool) (string, bool) {
 	type hop struct{ room, first string }
 	start := s.Obs.Room
 	queue := []hop{{room: start}}
@@ -285,10 +329,8 @@ func (s *State) stepTowardsFrontier(cfg Config) (string, bool) {
 	for len(queue) > 0 {
 		cur := queue[0]
 		queue = queue[1:]
-		if cur.room != start {
-			if _, ok := s.safeUnexploredExit(cur.room, cfg); ok {
-				return cur.first, true
-			}
+		if cur.room != start && want(cur.room) {
+			return cur.first, true
 		}
 		k := s.Map[cur.room]
 		for _, dir := range slices.Sorted(maps.Keys(k.Exits)) {
@@ -314,6 +356,20 @@ func (s *State) frontier() []string {
 		for _, dir := range slices.Sorted(maps.Keys(s.Map[room].Exits)) {
 			if s.Map[room].Exits[dir] == "" {
 				out = append(out, room+"/"+dir)
+			}
+		}
+	}
+	return out
+}
+
+// refused lists the unexplored exits code would not take, with the numbers behind it.
+func (s *State) refused(cfg Config) []string {
+	var out []string
+	for _, room := range slices.Sorted(maps.Keys(s.Map)) {
+		k := s.Map[room]
+		for _, dir := range slices.Sorted(maps.Keys(k.Exits)) {
+			if k.Exits[dir] == "" && k.Risk[dir] >= cfg.RiskThreshold {
+				out = append(out, fmt.Sprintf("%s/%s (danger %.2f, protected %.2f)", room, dir, k.Danger[dir], k.Protected[dir]))
 			}
 		}
 	}

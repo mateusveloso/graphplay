@@ -2,6 +2,7 @@ package world
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -132,5 +133,45 @@ func TestParse(t *testing.T) {
 				t.Fatalf("got %+v, %v", got, err)
 			}
 		})
+	}
+}
+
+func TestLookRevealsHiddenExitsOnce(t *testing.T) {
+	t.Parallel()
+	w, err := Load("caverns")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := New(w)
+	obs := play(t, g, "go north", "go east")
+	if slices.Contains(obs.Exits, "down") {
+		t.Fatal("the hidden exit must not show before looking")
+	}
+	obs = play(t, g, "look")
+	if !slices.Contains(obs.Exits, "down") || !strings.Contains(obs.Message, "steps lead down") {
+		t.Fatalf("look should reveal the way down: %+v", obs)
+	}
+	if obs = play(t, g, "look"); !strings.Contains(obs.Message, "nothing you had not seen") {
+		t.Fatalf("second look: %+v", obs)
+	}
+	if obs = play(t, g, "go down"); obs.Room != "crypt" {
+		t.Fatalf("want the crypt, got %+v", obs)
+	}
+}
+
+func TestCavernsIntendedSolution(t *testing.T) {
+	t.Parallel()
+	w, err := Load("caverns")
+	if err != nil {
+		t.Fatal(err)
+	}
+	obs := play(t, New(w),
+		"go north", "go west", "take lantern", "go east", // lantern
+		"go east", "look", "go down", "go north", "answer footsteps", "go north", "take coin", // coin
+		"go south", "go up", "go west", "go north", "go north", "go north", // dark, troll, antechamber
+		"go east", "answer map", "go east",
+	)
+	if !obs.Won {
+		t.Fatalf("want victory, got %+v", obs)
 	}
 }

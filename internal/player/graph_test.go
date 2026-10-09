@@ -41,7 +41,7 @@ func TestDeathReloadsAndIsRemembered(t *testing.T) {
 	if !s.Won || s.Deaths != 1 {
 		t.Fatalf("want one death then victory, got won=%v deaths=%d", s.Won, s.Deaths)
 	}
-	if got := s.Fatal["start"]; len(got) != 1 || got[0] != "go east" {
+	if got := s.Fatal["start"]; len(got) != 1 || got[0].Command != "go east" {
 		t.Fatalf("fatal command not remembered: %v", s.Fatal)
 	}
 	if len(s.Commands) != 1 || s.Commands[0].String() != "go north" {
@@ -55,13 +55,13 @@ func TestDeathReloadsAndIsRemembered(t *testing.T) {
 func TestDecisionModelRiskStopsCodeFromWalkingIntoTheDark(t *testing.T) {
 	t.Parallel()
 	// Jev says east is lethal; code never tries it, so there is no death at all.
-	decider := riskBy(map[string]float64{"exit_east": 0.95})
+	decider := riskBy(map[string]float64{"danger_east": 0.95})
 	_, cp := run(t, tiny(), script(), decider, testConfig(t))
 
 	if cp.State.Deaths != 0 || !cp.State.Won {
 		t.Fatalf("want a clean win, got deaths=%d won=%v", cp.State.Deaths, cp.State.Won)
 	}
-	if k := cp.State.Map["start"]; k.Risk["east"] != 0.95 || !k.Assessed {
+	if k := cp.State.Map["start"]; k.Danger["east"] != 0.95 || k.Risk["east"] < 0.9 || !k.Assessed {
 		t.Fatalf("assessment not stored: %+v", k)
 	}
 }
@@ -110,7 +110,7 @@ func TestSmallModelProposesWhenCodeHasNoSafeMoveAndRankFiltersNonsense(t *testin
 	t.Parallel()
 	// Both exits judged lethal: code refuses to explore, the small model proposes, the
 	// legal filter drops "dance" and "go west", one candidate remains, no decision needed.
-	decider := riskBy(map[string]float64{"exit_east": 0.9, "exit_north": 0.9})
+	decider := riskBy(map[string]float64{"danger_east": 0.9, "danger_north": 0.9})
 	model := script(Proposal{Commands: []string{"dance", "go west", "go north"}})
 
 	_, cp := run(t, tiny(), model, decider, testConfig(t))
@@ -118,15 +118,16 @@ func TestSmallModelProposesWhenCodeHasNoSafeMoveAndRankFiltersNonsense(t *testin
 	if !cp.State.Won {
 		t.Fatalf("want a win via the proposal, got %+v", cp.State.Ledger)
 	}
-	e := cp.State.Ledger[0]
-	if e.Layer != LayerSmall || e.Command != "go north" {
-		t.Fatalf("want the small model credited with 'go north', got %+v", e)
+	// Code looks around first (free), then admits it has nothing and the proposal wins.
+	last := cp.State.Ledger[len(cp.State.Ledger)-1]
+	if last.Layer != LayerSmall || last.Command != "go north" {
+		t.Fatalf("want the small model credited with 'go north', got %+v", last)
 	}
 }
 
 func TestDecisionModelPicksAmongSeveralLegalProposals(t *testing.T) {
 	t.Parallel()
-	decider := riskBy(map[string]float64{"exit_east": 0.9, "exit_north": 0.9})
+	decider := riskBy(map[string]float64{"danger_east": 0.9, "danger_north": 0.9})
 	decider.answer = chooseExactly(decider.answer, "go north")
 	model := script(Proposal{Commands: []string{"go east", "go north"}})
 
@@ -135,8 +136,8 @@ func TestDecisionModelPicksAmongSeveralLegalProposals(t *testing.T) {
 	if !cp.State.Won || cp.State.Deaths != 0 {
 		t.Fatalf("want a clean win, got %+v", cp.State.Ledger)
 	}
-	if e := cp.State.Ledger[0]; e.Layer != LayerDecision || !strings.Contains(e.Note, "over 2 proposals") {
-		t.Fatalf("want the decision model credited, got %+v", e)
+	if last := cp.State.Ledger[len(cp.State.Ledger)-1]; last.Layer != LayerDecision || !strings.Contains(last.Note, "over 2 proposals") {
+		t.Fatalf("want the decision model credited, got %+v", last)
 	}
 }
 
@@ -146,7 +147,7 @@ func TestStuckTurnsHandControlToAHuman(t *testing.T) {
 	cfg.StuckTurns = 2
 	// Nothing is lethal, but the proposal keeps repeating useless looks until patience runs out.
 	model := script(Proposal{Commands: []string{"look"}}, Proposal{Commands: []string{"look"}}, Proposal{Commands: []string{"look"}})
-	decider := riskBy(map[string]float64{"exit_east": 0.9, "exit_north": 0.9})
+	decider := riskBy(map[string]float64{"danger_east": 0.9, "danger_north": 0.9})
 
 	_, cp := run(t, tiny(), model, decider, cfg)
 
@@ -165,5 +166,33 @@ func TestMaxTurnsEndsTheGameUnfinished(t *testing.T) {
 	_, cp := run(t, cellar(t), script(), noDecider(), cfg)
 	if !cp.Done || cp.State.Won || cp.State.Turn != 1 {
 		t.Fatalf("want an unfinished game after one turn: turn=%d won=%v", cp.State.Turn, cp.State.Won)
+	}
+}
+
+func TestCodeLooksForHiddenExitsBeforeAskingAnyModel(t *testing.T) {
+	t.Parallel()
+	// caverns: the way to the crypt is hidden in the gallery and only "look" reveals it.
+	// The two riddles are the only model turns a safe-everywhere decider should allow.
+	decider := riskBy(map[string]float64{"protected_north": 0.95}) // every danger covered
+	model := script(RiddleAnswer{Answer: "footsteps"}, RiddleAnswer{Answer: "map"})
+
+	_, cp := run(t, cellarOrCaverns(t, "caverns"), model, decider, testConfig(t))
+
+	s := &cp.State
+	if !s.Won {
+		t.Fatalf("want a win, got turn=%d deaths=%d paused=%v", s.Turn, s.Deaths, cp.Paused())
+	}
+	by := layers(s)
+	if by[LayerLarge] != 2 || by[LayerSmall] != 0 {
+		t.Fatalf("want exactly the two riddles on the large model, got %v", by)
+	}
+	looked := 0
+	for _, e := range s.Ledger {
+		if e.Command == "look" {
+			looked++
+		}
+	}
+	if looked == 0 || !s.Map["gallery"].Looked {
+		t.Fatalf("code should have looked around the gallery: %+v", s.Ledger)
 	}
 }

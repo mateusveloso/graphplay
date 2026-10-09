@@ -16,7 +16,7 @@ func Build(w world.World, models llm.Models, decider jev.Decider, cfg Config) *g
 		Node("observe", observe(w)).
 		Node("assess", assess(decider)).
 		Node("cheap_move", cheapMove(cfg)).
-		Node("propose", propose(models.Small)).
+		Node("propose", propose(models.Small, cfg)).
 		Node("rank", rank(decider)).
 		Node("solve", solve(models.Large)).
 		Node("act", act(w)).

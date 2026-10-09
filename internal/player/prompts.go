@@ -62,5 +62,6 @@ type RiddleAnswer struct {
 // proposeView adds to State what the propose prompt needs and the state does not carry.
 type proposeView struct {
 	*State
-	Unexplored []string
+	Unexplored []string // exits nobody has walked through yet, as room/direction
+	Refused    []string // unexplored exits code judged too risky, with the numbers
 }

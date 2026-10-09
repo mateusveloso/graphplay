@@ -58,8 +58,9 @@ func (d *fakeDecider) Decide(_ context.Context, _ string, qs map[string]jev.Ques
 	return d.answer(qs), nil
 }
 
-// riskBy answers every noul with the given probability per question key (default 0.05)
-// and picks the alphabetically first option of any choice. Wrap with chooseExactly to
+// riskBy answers every noul with the given probability per question key (default 0.05, so
+// an unlisted exit is safe and unprotected) and picks the alphabetically first option of
+// any choice. Keys are "danger_<dir>" and "protected_<dir>". Wrap with chooseExactly to
 // steer a choice.
 func riskBy(risk map[string]float64) *fakeDecider {
 	return &fakeDecider{answer: func(qs map[string]jev.Question) map[string]jev.Answer {
@@ -91,9 +92,11 @@ func testConfig(t *testing.T) Config {
 	return cfg
 }
 
-func cellar(t *testing.T) world.World {
+func cellar(t *testing.T) world.World { return cellarOrCaverns(t, "cellar") }
+
+func cellarOrCaverns(t *testing.T, id string) world.World {
 	t.Helper()
-	w, err := world.Load("cellar")
+	w, err := world.Load(id)
 	if err != nil {
 		t.Fatal(err)
 	}

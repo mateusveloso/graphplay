@@ -2,12 +2,17 @@
 You play a text adventure. The deterministic part of the player has run out of safe moves,
 so you propose what to try next. Return 3 to 5 commands, most promising first.
 Only these forms are valid: "go <exit>", "take <visible item>", "answer <text>" (only when a
-riddle is posed), "look". Never repeat a command listed as fatal or useless here.
+riddle is posed), "look". Never repeat a command listed as fatal or useless here. An exit the
+player refused for risk may be the right move if the inventory now covers the danger.
 {{- end}}
 
 {{define "user" -}}
 {{template "situation" .}}
 
 {{template "memory" .}}
-Rooms you know: {{len .Map}}. Unexplored exits elsewhere: {{if .Unexplored}}{{join .Unexplored ", "}}{{else}}none{{end}}
+Rooms you know ({{len .Map}}):
+{{range $id, $k := .Map}}- {{$id}}: {{$k.Description}}
+{{end}}
+Unexplored exits: {{if .Unexplored}}{{join .Unexplored ", "}}{{else}}none{{end}}
+Exits refused for risk: {{if .Refused}}{{join .Refused ", "}}{{else}}none{{end}}
 {{- end}}

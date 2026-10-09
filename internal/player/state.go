@@ -41,15 +41,28 @@ type Entry struct {
 }
 
 // Known is what the player has learned about a room. Exits map a direction to the room it
-// led to, or "" while unexplored. Risk is the decision model's P(lethal) per direction,
-// taken with the inventory listed in AssessedWith.
+// led to, or "" while unexplored. Risk is P(lethal now) per direction, combined in code
+// from two decision-model answers: Danger (the text warns of something in that direction)
+// and Protected (the player carries what it takes). Both are kept for the record.
 type Known struct {
 	Name         string             `json:"name"`
+	Description  string             `json:"description"`
 	Kind         string             `json:"kind,omitempty"`
 	Exits        map[string]string  `json:"exits"`
+	Danger       map[string]float64 `json:"danger,omitempty"`
+	Protected    map[string]float64 `json:"protected,omitempty"`
 	Risk         map[string]float64 `json:"risk,omitempty"`
 	AssessedWith []string           `json:"assessed_with,omitempty"`
 	Assessed     bool               `json:"assessed"`
+	Looked       bool               `json:"looked"`
+}
+
+// Death is a command that killed the player in a room, with what the player carried. The
+// same command may be safe once the inventory changes (a lantern, a coin), so the record
+// only rules the command out while the inventory is the same.
+type Death struct {
+	Command   string   `json:"command"`
+	Inventory []string `json:"inventory"`
 }
 
 // State is the whole run. The engine is not stored: Commands is the replay log, and every
@@ -61,7 +74,7 @@ type State struct {
 	Commands     []world.Command     `json:"commands"`
 	Obs          world.Observation   `json:"obs"`
 	Map          map[string]*Known   `json:"map"`
-	Fatal        map[string][]string `json:"fatal,omitempty"` // room -> commands that killed
+	Fatal        map[string][]Death  `json:"fatal,omitempty"` // room -> commands that killed
 	Tried        map[string][]string `json:"tried,omitempty"` // room -> commands that did nothing
 	Deaths       int                 `json:"deaths"`
 	LastProgress int                 `json:"last_progress"`
@@ -79,7 +92,7 @@ func (s *State) here() *Known {
 	}
 	k, ok := s.Map[s.Obs.Room]
 	if !ok {
-		k = &Known{Name: s.Obs.Name, Exits: make(map[string]string, len(s.Obs.Exits))}
+		k = &Known{Name: s.Obs.Name, Description: s.Obs.Description, Exits: make(map[string]string, len(s.Obs.Exits))}
 		for _, dir := range s.Obs.Exits {
 			k.Exits[dir] = ""
 		}
@@ -96,7 +109,12 @@ func (s *State) assessed() bool {
 }
 
 func (s *State) ruledOut(room, command string) bool {
-	return slices.Contains(s.Fatal[room], command) || slices.Contains(s.Tried[room], command)
+	if slices.Contains(s.Tried[room], command) {
+		return true
+	}
+	return slices.ContainsFunc(s.Fatal[room], func(d Death) bool {
+		return d.Command == command && slices.Equal(d.Inventory, s.Obs.Inventory)
+	})
 }
 
 func (s *State) riddleAttempts() int {

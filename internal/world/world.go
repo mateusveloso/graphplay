@@ -41,17 +41,36 @@ type Lock struct {
 	Opened string `json:"opened"`
 }
 
+// Hidden is an exit that only appears after the player looks closely.
+type Hidden struct {
+	To     string `json:"to"`
+	Reveal string `json:"reveal"`
+}
+
 // Room is one location. Dangers live in prose and in these fields; the player sees prose.
 type Room struct {
 	Name        string            `json:"name"`
 	Description string            `json:"description"`
 	Exits       map[string]string `json:"exits"`
+	Hidden      map[string]Hidden `json:"hidden,omitempty"`
 	Items       []string          `json:"items,omitempty"`
 	Dark        bool              `json:"dark,omitempty"`
 	Death       string            `json:"death,omitempty"`
 	Hazard      *Hazard           `json:"hazard,omitempty"`
 	Locks       map[string]Lock   `json:"locks,omitempty"`
 	Goal        bool              `json:"goal,omitempty"`
+}
+
+// exits returns the visible exits: the open ones plus any hidden one already revealed.
+func (r *Room) exits(revealed bool) map[string]string {
+	if !revealed || len(r.Hidden) == 0 {
+		return r.Exits
+	}
+	all := maps.Clone(r.Exits)
+	for dir, h := range r.Hidden {
+		all[dir] = h.To
+	}
+	return all
 }
 
 // World is the static definition of a game.
@@ -91,13 +110,13 @@ func (w World) validate() error {
 		return fmt.Errorf("start room %q does not exist", w.Start)
 	}
 	for id, r := range w.Rooms {
-		for dir, to := range r.Exits {
+		for dir, to := range r.exits(true) {
 			if _, ok := w.Rooms[to]; !ok {
 				return fmt.Errorf("room %q exit %s points to unknown room %q", id, dir, to)
 			}
 		}
 		for dir := range r.Locks {
-			if _, ok := r.Exits[dir]; !ok {
+			if _, ok := r.exits(true)[dir]; !ok {
 				return fmt.Errorf("room %q locks an exit it does not have: %s", id, dir)
 			}
 		}
@@ -168,6 +187,7 @@ type Game struct {
 	inventory []string
 	items     map[string][]string // room -> items still there
 	unlocked  map[string]bool     // "room/dir"
+	revealed  map[string]bool     // rooms where "look" exposed the hidden exits
 	riddle    string              // riddle currently posed, if any
 	message   string
 	dead      bool
@@ -177,7 +197,13 @@ type Game struct {
 
 // New starts a game at the world's start room.
 func New(w World) *Game {
-	g := &Game{world: w, room: w.Start, items: make(map[string][]string, len(w.Rooms)), unlocked: make(map[string]bool)}
+	g := &Game{
+		world:    w,
+		room:     w.Start,
+		items:    make(map[string][]string, len(w.Rooms)),
+		unlocked: make(map[string]bool),
+		revealed: make(map[string]bool),
+	}
 	for id, r := range w.Rooms {
 		g.items[id] = slices.Clone(r.Items)
 	}
@@ -206,7 +232,7 @@ func (g *Game) Observe() Observation {
 		Room:        g.room,
 		Name:        r.Name,
 		Description: r.Description,
-		Exits:       slices.Sorted(maps.Keys(r.Exits)),
+		Exits:       slices.Sorted(maps.Keys(r.exits(g.revealed[g.room]))),
 		Items:       slices.Clone(g.items[g.room]),
 		Inventory:   slices.Clone(g.inventory),
 		Message:     g.message,
@@ -227,6 +253,7 @@ func (g *Game) Do(c Command) Observation {
 	}
 	switch c.Verb {
 	case Look:
+		g.look()
 	case Take:
 		g.take(c.Arg)
 	case Answer:
@@ -237,6 +264,18 @@ func (g *Game) Do(c Command) Observation {
 		g.message = fmt.Sprintf("You cannot %q.", c.String())
 	}
 	return g.Observe()
+}
+
+func (g *Game) look() {
+	r := g.world.Rooms[g.room]
+	if len(r.Hidden) == 0 || g.revealed[g.room] {
+		g.message = "You see nothing you had not seen before."
+		return
+	}
+	g.revealed[g.room] = true
+	for _, h := range r.Hidden {
+		g.message = h.Reveal // one hidden exit per room is the designed case
+	}
 }
 
 func (g *Game) take(item string) {
@@ -272,7 +311,7 @@ func (g *Game) answer(text string) {
 
 func (g *Game) move(dir string) {
 	r := g.world.Rooms[g.room]
-	to, ok := r.Exits[dir]
+	to, ok := r.exits(g.revealed[g.room])[dir]
 	if !ok {
 		g.message = "You cannot go that way."
 		return

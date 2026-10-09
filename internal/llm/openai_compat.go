@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -67,12 +68,36 @@ type chatResponse struct {
 	} `json:"error,omitempty"`
 }
 
-// Ask implements Model.
+// errTransient marks failures worth one more try: an empty completion (documented as
+// occasional), rate limiting, or a server error.
+type errTransient struct{ err error }
+
+func (e errTransient) Error() string { return e.err.Error() }
+func (e errTransient) Unwrap() error { return e.err }
+
+const attempts = 3
+
+// Ask implements Model. Transient failures are retried with a short backoff.
 func (c *OpenAICompat) Ask(ctx context.Context, system, user string, out any) error {
 	schema, err := schemaOf(out)
 	if err != nil {
 		return err
 	}
+	for attempt := 1; ; attempt++ {
+		err = c.ask(ctx, system, user, schema, out)
+		var transient errTransient
+		if err == nil || !errors.As(err, &transient) || attempt == attempts {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(attempt) * time.Second):
+		}
+	}
+}
+
+func (c *OpenAICompat) ask(ctx context.Context, system, user, schema string, out any) error {
 	// The word "json" must appear in the prompt for json_object mode; the schema is the
 	// example the provider asks for.
 	system += "\n\nRespond with a single json object and nothing else. It must conform to this JSON Schema:\n" + schema
@@ -103,7 +128,11 @@ func (c *OpenAICompat) Ask(ctx context.Context, system, user string, out any) er
 		return err
 	}
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("%s: %s: %s", c.baseURL, resp.Status, strings.TrimSpace(string(raw)))
+		err := fmt.Errorf("%s: %s: %s", c.baseURL, resp.Status, strings.TrimSpace(string(raw)))
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return errTransient{err}
+		}
+		return err
 	}
 	var parsed chatResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil {
@@ -113,7 +142,7 @@ func (c *OpenAICompat) Ask(ctx context.Context, system, user string, out any) er
 		return fmt.Errorf("%s: %s", c.baseURL, parsed.Error.Message)
 	}
 	if len(parsed.Choices) == 0 || parsed.Choices[0].Message.Content == "" {
-		return fmt.Errorf("%s: empty completion", c.baseURL)
+		return errTransient{fmt.Errorf("%s: empty completion", c.baseURL)}
 	}
 	content := stripFences(parsed.Choices[0].Message.Content)
 	if err := json.Unmarshal([]byte(content), out); err != nil {
