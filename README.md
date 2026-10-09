@@ -157,8 +157,10 @@ node that failed; nothing before it is re-executed.
 ### Watch it
 
 ```bash
-go run ./cmd/play serve -world caverna -pace 1200ms   # then open http://127.0.0.1:8080/map.html?lang=pt
+go run ./cmd/play serve -world caverna -pace 1200ms   # then open http://127.0.0.1:8080/?lang=pt
 ```
+
+![the map view: the player's map, a thread from the deciding node, the card with the why](docs/img/map.jpg)
 
 `/` is a one-screen introduction to the game and the player, with a button into `map.html`,
 the one to watch: the player's own map of the world, drawn only from what it has
