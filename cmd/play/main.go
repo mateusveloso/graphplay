@@ -8,6 +8,8 @@
 //	play diagram                     print the graph as Mermaid
 //	play baseline -mode llm|decision [-world caverns]
 //	                                 play the same world without the graph
+//	play serve [-addr 127.0.0.1:8080]
+//	                                 watch the graph play in a browser
 //
 // Flags may come before or after the positional argument.
 package main
@@ -20,7 +22,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -51,7 +52,7 @@ func runWithSignals() error {
 
 func run(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: play <run|resume|diagram> [flags]")
+		return errors.New("usage: play <run|resume|diagram|baseline|serve> [flags]")
 	}
 	cfg := player.FromEnv()
 	if err := cfg.Validate(); err != nil {
@@ -66,6 +67,8 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		return cmdDiagram(cfg, rest, out)
 	case "baseline":
 		return cmdBaseline(ctx, cfg, rest, out)
+	case "serve":
+		return cmdServe(ctx, cfg, rest, out)
 	default:
 		return fmt.Errorf("unknown command %q", cmd)
 	}
@@ -73,21 +76,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 
 // app wires real dependencies. Tests build the same graph with fakes.
 func app(cfg player.Config, meter *metrics.Meter) (*graph.Runner[player.State], error) {
-	w, err := world.Load(cfg.World)
-	if err != nil {
-		return nil, err
-	}
-	models, err := generative(cfg, meter)
-	if err != nil {
-		return nil, err
-	}
-	var decider jev.Decider = jev.None{}
-	if cfg.TypeSafeAPIKey != "" {
-		decider = jev.NewClient(cfg.TypeSafeAPIKey, meter)
-	}
-	store := graph.FileStore[player.State]{Dir: filepath.Join(cfg.StateDir, "runs")}
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	return graph.NewRunner(player.Build(w, models, decider, cfg), store, graph.WithLogger[player.State](logger))
+	return appWith(cfg, meter)
 }
 
 // generative picks the provider of the two generative roles from Config.
