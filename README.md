@@ -17,13 +17,14 @@ A clean run of the bundled `caverns` world ends like this:
 
 | player | won | turns | deaths | large-model calls | decision-model calls |
 |---|---|---|---|---|---|
-| **the graph** | yes | 29 | 0 | 2 (722 in / 881 out tokens, 13 s) | 18 (13k in, 5.7 s) |
-| one large LLM alone, full transcript as memory | yes | 49 | 0 | 49 | 0 |
-| one decision model alone, over the legal commands | no | 34 (stopped at 3 deaths) | 3 | 0 | 34 |
+| **the graph** | yes | 29 | 0 | 2 (722 in / 881 out tokens, 13 s) | 18 (13k in / 2.3k out, 5.7 s) |
+| one large LLM alone, full transcript as memory | yes | 41 | 1 | 42 (29k in / 27k out, 468 s) | 0 |
+| one decision model alone, over the legal commands | no | 34 (stopped at 3 deaths) | 3 | 0 | 34 (17k in, 10 s) |
 
 Same world, same turn budget, same mercy on death (a reload). The LLM alone does solve it: it
-also spends twenty of its turns walking between two rooms, and pays for a large-model call on
-every one of them. The decision model alone cannot type an answer to a riddle, so it never
+also spends a dozen turns walking between the same two rooms, writes 27 thousand tokens of
+reasoning to do so, and pays for a large-model call on every turn (another run of it took 49
+turns). The decision model alone cannot type an answer to a riddle, so it never
 can. The graph puts each decision where it is cheapest and asks the large model twice, for the
 two riddles. Those numbers, not the game, are what this repository is about. The reports are
 written by `play run` and `play baseline`; see "Run it".
