@@ -94,11 +94,14 @@ exposes the map, and dangers live in the prose ("from the west you hear slow, he
 not in structured fields. That is what forces reading. Every game is replayable from its command
 log, which is why death is cheap: **reload is a replay without the fatal command.**
 
-Two bundled worlds. [`cellar`](internal/world/worlds/cellar.json): seven rooms, a lantern in the
+Three bundled worlds. [`cellar`](internal/world/worlds/cellar.json): seven rooms, a lantern in the
 first one, a passage that kills you in the dark, a troll who takes the coin or you, a riddle door,
 a chest. [`caverns`](internal/world/worlds/caverns.json): thirteen rooms, the lantern off the
 direct path, an exit that only `look` reveals, two riddles, a toll bridge, a fork where both
-arches look lethal and only an inscription says which one is, and a chest. The cellar is
+arches look lethal and only an inscription says which one is, and a chest.
+[`caverna`](internal/world/worlds/caverna.json) is the same map in Brazilian Portuguese: prose,
+exits, items, riddles and the engine's own sentences. The models answer in the language of the
+game; the decision model's numbers came out the same as in English. The cellar is
 good for a first run; the caverns are where the layers earn their keep.
 
 ## The player
@@ -159,7 +162,8 @@ go run ./cmd/play serve         # then open http://127.0.0.1:8080
 
 One page: the graph with the active node lit, what the player sees, what the current layer is
 doing (and, for the riddle, the model's reasoning), the ledger and the model usage filling in
-as the game runs. When the graph needs a human, the page asks. It is the runner's observer
+as the game runs. When the graph needs a human, the page asks. `?lang=pt` puts the page's own
+labels and captions in Portuguese; node and layer names stay as they are in the code. It is the runner's observer
 streamed over Server-Sent Events; the only dependency is Mermaid from a CDN, in the page.
 
 ### Compare it

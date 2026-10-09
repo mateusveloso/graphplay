@@ -83,6 +83,15 @@ func TestAPaidTollStaysPaid(t *testing.T) {
 	}
 }
 
+func TestRiddleAcceptsListedVariants(t *testing.T) {
+	t.Parallel()
+	g := New(cellar(t))
+	obs := play(t, g, "take lantern", "go north", "go north", "go north", "go east", "answer An Echo")
+	if !strings.Contains(obs.Message, "swings inward") {
+		t.Fatalf("a listed variant must open the door: %+v", obs)
+	}
+}
+
 func TestWrongAnswerKeepsTheDoorShut(t *testing.T) {
 	t.Parallel()
 	g := New(cellar(t))
@@ -197,5 +206,26 @@ func TestTrapKillsRegardlessOfInventory(t *testing.T) {
 		"go south", "go up", "go west", "go north", "go north", "go north", "go west")
 	if !obs.Dead || !strings.Contains(obs.Message, "skull keeps you") {
 		t.Fatalf("the skull arch must kill an equipped player too: %+v", obs)
+	}
+}
+
+func TestCavernaSpeaksPortugueseAndIsWinnable(t *testing.T) {
+	t.Parallel()
+	w, err := Load("caverna")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := New(w)
+	obs := play(t, g, "go norte", "go oeste", "take lanterna")
+	if obs.Message != "Você pegou: lanterna a óleo." {
+		t.Fatalf("engine strings not translated: %q", obs.Message)
+	}
+	obs = play(t, g, "go leste", "go leste", "look", "go baixo", "go norte", "answer Pegadas", "go norte", "take moeda",
+		"go sul", "go cima", "go oeste", "go norte", "go norte", "go norte", "go leste", "go leste", "answer mapa", "go leste")
+	if !obs.Won {
+		t.Fatalf("want victory, got %+v", obs)
+	}
+	if obs := play(t, New(w), "go norte", "go norte"); !obs.Dead {
+		t.Fatal("the dark must kill without the lanterna")
 	}
 }

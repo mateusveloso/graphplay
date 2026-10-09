@@ -52,7 +52,8 @@ type Move struct {
 const llmSystem = `You are playing a text adventure. Each turn you see the room, the exits,
 the visible items, your inventory and the full transcript so far. Reply with exactly one
 command: "go <exit>", "take <item>", "answer <text>" (when a riddle is posed) or "look".
-If you die, the game reloads the moment before your command; learn from it. Find the chest.`
+If you die, the game reloads the moment before your command; learn from it. Find the chest.
+Commands keep their English verbs; exits, items and answers are in the language of the game.`
 
 // PlayLLM lets a single generative model play, remembering everything it saw.
 func PlayLLM(ctx context.Context, w world.World, model llm.Model, lim Limits) (Result, error) {

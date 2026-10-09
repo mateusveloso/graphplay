@@ -73,7 +73,12 @@
           "riddle": "The more of me you take, the more of me you leave behind. What am I?",
           "answer": "footsteps",
           "closed": "The lintel speaks the riddle. The bronze door stays shut.",
-          "opened": "The carved footprint sinks into the bronze. The door opens."
+          "opened": "The carved footprint sinks into the bronze. The door opens.",
+          "also": [
+            "footstep",
+            "steps",
+            "footprints"
+          ]
         }
       }
     },
@@ -123,7 +128,10 @@
           "riddle": "I have cities but no houses, forests but no trees, and water but no fish. What am I?",
           "answer": "map",
           "closed": "The green door asks its question and does not move.",
-          "opened": "The carved coasts slide apart. The door opens."
+          "opened": "The carved coasts slide apart. The door opens.",
+          "also": [
+            "a map"
+          ]
         }
       }
     },

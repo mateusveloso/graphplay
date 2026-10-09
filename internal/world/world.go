@@ -33,12 +33,22 @@ type Hazard struct {
 	Death    string `json:"death"`
 }
 
-// Lock bars an exit until its riddle is answered.
+// Lock bars an exit until its riddle is answered. Also lists accepted variants (a plural,
+// a synonym); a riddle is not a spelling test.
 type Lock struct {
-	Riddle string `json:"riddle"`
-	Answer string `json:"answer"`
-	Closed string `json:"closed"`
-	Opened string `json:"opened"`
+	Riddle string   `json:"riddle"`
+	Answer string   `json:"answer"`
+	Also   []string `json:"also,omitempty"`
+	Closed string   `json:"closed"`
+	Opened string   `json:"opened"`
+}
+
+func (l Lock) accepts(text string) bool {
+	text = strings.TrimSpace(text)
+	if strings.EqualFold(text, l.Answer) {
+		return true
+	}
+	return slices.ContainsFunc(l.Also, func(a string) bool { return strings.EqualFold(text, a) })
 }
 
 // Hidden is an exit that only appears after the player looks closely.
@@ -74,13 +84,63 @@ func (r *Room) exits(revealed bool) map[string]string {
 	return all
 }
 
+// Strings are the engine's own sentences, so a world can speak its language. Missing ones
+// fall back to English. Each has at most one %s.
+type Strings struct {
+	Taken           string `json:"taken,omitempty"`   // %s = item name
+	NoItem          string `json:"no_item,omitempty"` // %s = item id
+	CannotGo        string `json:"cannot_go,omitempty"`
+	NothingHappens  string `json:"nothing_happens,omitempty"`
+	NothingToAnswer string `json:"nothing_to_answer,omitempty"`
+	NothingNew      string `json:"nothing_new,omitempty"`
+	Cannot          string `json:"cannot,omitempty"` // %s = the command
+}
+
+var english = Strings{
+	Taken:           "Taken: %s.",
+	NoItem:          "There is no %s here.",
+	CannotGo:        "You cannot go that way.",
+	NothingHappens:  "Nothing happens.",
+	NothingToAnswer: "There is nothing here to answer.",
+	NothingNew:      "You see nothing you had not seen before.",
+	Cannot:          "You cannot %q.",
+}
+
+func (s Strings) withDefaults() Strings {
+	pick := func(v, def string) string {
+		if v == "" {
+			return def
+		}
+		return v
+	}
+	return Strings{
+		Taken:           pick(s.Taken, english.Taken),
+		NoItem:          pick(s.NoItem, english.NoItem),
+		CannotGo:        pick(s.CannotGo, english.CannotGo),
+		NothingHappens:  pick(s.NothingHappens, english.NothingHappens),
+		NothingToAnswer: pick(s.NothingToAnswer, english.NothingToAnswer),
+		NothingNew:      pick(s.NothingNew, english.NothingNew),
+		Cannot:          pick(s.Cannot, english.Cannot),
+	}
+}
+
 // World is the static definition of a game.
 type World struct {
 	ID       string           `json:"id"`
+	Lang     string           `json:"lang,omitempty"`  // BCP 47, informational: "en", "pt-BR"
+	Light    string           `json:"light,omitempty"` // item id that makes dark rooms safe; "lantern" by default
 	Start    string           `json:"start"`
 	GoalText string           `json:"goal_text"`
 	Items    map[string]Item  `json:"items"`
 	Rooms    map[string]*Room `json:"rooms"`
+	Strings  Strings          `json:"strings,omitempty"`
+}
+
+func (w World) light() string {
+	if w.Light == "" {
+		return "lantern"
+	}
+	return w.Light
 }
 
 // Load reads an embedded world by id.
@@ -93,6 +153,7 @@ func Load(id string) (World, error) {
 	if err := json.Unmarshal(data, &w); err != nil {
 		return World{}, fmt.Errorf("world %q: %w", id, err)
 	}
+	w.Strings = w.Strings.withDefaults()
 	return w, w.validate()
 }
 
@@ -199,6 +260,7 @@ type Game struct {
 
 // New starts a game at the world's start room.
 func New(w World) *Game {
+	w.Strings = w.Strings.withDefaults()
 	g := &Game{
 		world:    w,
 		room:     w.Start,
@@ -264,7 +326,7 @@ func (g *Game) Do(c Command) Observation {
 	case Go:
 		g.move(c.Arg)
 	default:
-		g.message = fmt.Sprintf("You cannot %q.", c.String())
+		g.message = fmt.Sprintf(g.world.Strings.Cannot, c.String())
 	}
 	return g.Observe()
 }
@@ -272,7 +334,7 @@ func (g *Game) Do(c Command) Observation {
 func (g *Game) look() {
 	r := g.world.Rooms[g.room]
 	if len(r.Hidden) == 0 || g.revealed[g.room] {
-		g.message = "You see nothing you had not seen before."
+		g.message = g.world.Strings.NothingNew
 		return
 	}
 	g.revealed[g.room] = true
@@ -285,12 +347,12 @@ func (g *Game) take(item string) {
 	here := g.items[g.room]
 	i := slices.Index(here, item)
 	if i < 0 {
-		g.message = fmt.Sprintf("There is no %s here.", item)
+		g.message = fmt.Sprintf(g.world.Strings.NoItem, item)
 		return
 	}
 	g.items[g.room] = slices.Delete(here, i, i+1)
 	g.inventory = append(g.inventory, item)
-	g.message = fmt.Sprintf("Taken: %s.", g.world.Items[item].Name)
+	g.message = fmt.Sprintf(g.world.Strings.Taken, g.world.Items[item].Name)
 }
 
 func (g *Game) answer(text string) {
@@ -300,23 +362,23 @@ func (g *Game) answer(text string) {
 		if g.unlocked[key] {
 			continue
 		}
-		if strings.EqualFold(strings.TrimSpace(text), lock.Answer) {
+		if lock.accepts(text) {
 			g.unlocked[key] = true
 			g.riddle = ""
 			g.message = lock.Opened
 			return
 		}
-		g.message = "Nothing happens."
+		g.message = g.world.Strings.NothingHappens
 		return
 	}
-	g.message = "There is nothing here to answer."
+	g.message = g.world.Strings.NothingToAnswer
 }
 
 func (g *Game) move(dir string) {
 	r := g.world.Rooms[g.room]
 	to, ok := r.exits(g.revealed[g.room])[dir]
 	if !ok {
-		g.message = "You cannot go that way."
+		g.message = g.world.Strings.CannotGo
 		return
 	}
 	if lock, locked := r.Locks[dir]; locked && !g.unlocked[g.room+"/"+dir] {
@@ -329,7 +391,7 @@ func (g *Game) move(dir string) {
 		g.die(dest.Death)
 		return
 	}
-	if dest.Dark && !slices.Contains(g.inventory, "lantern") {
+	if dest.Dark && !slices.Contains(g.inventory, g.world.light()) {
 		g.die(dest.Death)
 		return
 	}

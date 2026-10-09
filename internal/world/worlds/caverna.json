@@ -1,0 +1,176 @@
+{
+  "id": "caverna",
+  "lang": "pt-BR",
+  "light": "lanterna",
+  "start": "acampamento",
+  "goal_text": "O baú é mais pesado do que parece. Atrás de você, as cavernas ficam em silêncio, como se esperassem ser resolvidas.",
+  "items": {
+    "lanterna": {
+      "name": "lanterna a óleo",
+      "description": "Uma lanterna a óleo amassada. Ainda acende."
+    },
+    "moeda": {
+      "name": "moeda de prata",
+      "description": "Uma moeda de prata pesada, com uma ponte cunhada."
+    }
+  },
+  "strings": {
+    "taken": "Você pegou: %s.",
+    "no_item": "Não há %s aqui.",
+    "cannot_go": "Não dá para ir por aí.",
+    "nothing_happens": "Nada acontece.",
+    "nothing_to_answer": "Não há nada aqui para responder.",
+    "nothing_new": "Você não vê nada que já não tivesse visto.",
+    "cannot": "Você não consegue %q."
+  },
+  "rooms": {
+    "acampamento": {
+      "name": "Acampamento Frio",
+      "description": "As cinzas de uma fogueira, um saco de dormir rasgado, um teto que goteja. Quem acampou aqui foi embora com pressa. Uma passagem larga segue ao norte, para dentro do morro; uma mais estreita vai para oeste, de onde você ouve água.",
+      "exits": {
+        "norte": "salao",
+        "oeste": "cisterna"
+      }
+    },
+    "cisterna": {
+      "name": "Cisterna",
+      "description": "Um poço redondo de água preta enche a sala de parede a parede. Nada boia nela e nada está ao lado dela. O único caminho é de volta para leste.",
+      "exits": {
+        "leste": "acampamento"
+      }
+    },
+    "salao": {
+      "name": "Salão de Pilares",
+      "description": "Seis pilares sustentam um teto que você não enxerga. Ao norte o salão termina num túnel que engole toda a luz; o ar que vem dele é frio e cheira a pedra funda. Uma porta baixa fica a oeste, um arco largo a leste, e o acampamento ao sul.",
+      "exits": {
+        "norte": "tunel_escuro",
+        "oeste": "santuario",
+        "leste": "galeria",
+        "sul": "acampamento"
+      }
+    },
+    "santuario": {
+      "name": "Santuário",
+      "description": "Um nicho com a estátua rachada de uma figura sentada. No altar diante dela alguém deixou uma lanterna a óleo. A porta de volta a leste é a única saída.",
+      "exits": {
+        "leste": "salao"
+      },
+      "items": [
+        "lanterna"
+      ]
+    },
+    "galeria": {
+      "name": "Galeria Pintada",
+      "description": "Pinturas desbotadas de uma procissão cobrem as paredes, todas caminhando em direção ao chão no fundo da sala, onde as lajes são mais novas que o resto e uma corrente de ar fino sobe entre elas. O arco de volta a oeste é a única saída que você vê.",
+      "exits": {
+        "oeste": "salao"
+      },
+      "hidden": {
+        "baixo": {
+          "to": "cripta",
+          "reveal": "Você se ajoelha onde as figuras pintadas apontam. Uma laje balança sob a sua mão; embaixo dela, degraus descem."
+        }
+      }
+    },
+    "cripta": {
+      "name": "Cripta",
+      "description": "Prateleiras de pedra guardam os mortos em fileiras arrumadas. No fundo, ao norte, uma porta de bronze mostra uma única pegada esculpida, e há palavras ao longo da verga. Os degraus voltam para cima.",
+      "exits": {
+        "cima": "galeria",
+        "norte": "cofre"
+      },
+      "locks": {
+        "norte": {
+          "riddle": "Quanto mais de mim você tira, mais de mim você deixa para trás. O que sou?",
+          "answer": "pegadas",
+          "closed": "A verga pronuncia o enigma. A porta de bronze continua fechada.",
+          "opened": "A pegada esculpida afunda no bronze. A porta se abre.",
+          "also": [
+            "pegada",
+            "passos"
+          ]
+        }
+      }
+    },
+    "cofre": {
+      "name": "Cofre do Pedágio",
+      "description": "Um cofre pequeno, vazio a não ser por uma mão de pedra que estende uma única moeda de prata com uma ponte cunhada. A porta de volta ao sul é o único caminho.",
+      "exits": {
+        "sul": "cripta"
+      },
+      "items": [
+        "moeda"
+      ]
+    },
+    "tunel_escuro": {
+      "name": "Túnel Escuro",
+      "description": "Sua luz mostra um túnel aberto na rocha preta, o chão partido por uma fenda que você atravessa com um passo. Adiante, ao norte, o túnel abre numa ponte, e de lá vem uma respiração lenta e pesada e o tinir de uma corrente. Ao sul fica o salão.",
+      "dark": true,
+      "death": "Você entra no escuro com as mãos estendidas. O chão acaba antes que as suas mãos encontrem alguma coisa.",
+      "exits": {
+        "norte": "ponte",
+        "sul": "salao"
+      }
+    },
+    "ponte": {
+      "name": "Ponte do Pedágio",
+      "description": "Uma ponte de pedra sobre um abismo de que você não vê o fundo, e sobre ela um troll com uma corrente num tornozelo e uma mão aberta do tamanho de um escudo. Ele não fala. Ele espera. Ao norte, passando por ele, um patamar; ao sul, o túnel.",
+      "hazard": {
+        "requires": "moeda",
+        "consumes": true,
+        "pass": "O troll fecha a mão sobre a moeda, morde a moeda e sai do caminho.",
+        "death": "A mão do troll se fecha sobre você no lugar da moeda."
+      },
+      "exits": {
+        "norte": "patamar",
+        "sul": "tunel_escuro"
+      }
+    },
+    "patamar": {
+      "name": "Patamar dos Dois Arcos",
+      "description": "Um patamar diante de dois arcos, um a leste e um a oeste. Além de cada arco, o chão é um pano pintado esticado sobre um poço; você vê os dois panos respirarem com a corrente de ar, e uma pedrinha jogada por qualquer um deles cai por muito tempo antes de parar. Um dos dois panos, diz a história antiga, está sobre pedra firme. Acima do arco oeste uma caveira esculpida, acima do arco leste uma taça esculpida. Letras cortadas no degrau: A CAVEIRA GUARDA O QUE RECEBE. A TAÇA DEVOLVE. A ponte fica ao sul.",
+      "exits": {
+        "sul": "ponte",
+        "oeste": "oubliette",
+        "leste": "antecamara"
+      }
+    },
+    "oubliette": {
+      "name": "Oubliette",
+      "description": "Um poço.",
+      "trap": true,
+      "death": "O chão além da caveira é um pano pintado sobre um poço. A caveira guarda você.",
+      "exits": {
+        "cima": "patamar"
+      }
+    },
+    "antecamara": {
+      "name": "Antecâmara",
+      "description": "Uma sala quadrada com uma porta de pedra verde a leste, esculpida com costas, rios e torres minúsculas. Há palavras cortadas acima dela. O patamar fica de volta ao sul.",
+      "exits": {
+        "sul": "patamar",
+        "leste": "tesouro"
+      },
+      "locks": {
+        "leste": {
+          "riddle": "Tenho cidades, mas não casas; florestas, mas não árvores; água, mas não peixes. O que sou?",
+          "answer": "mapa",
+          "closed": "A porta verde faz a sua pergunta e não se move.",
+          "opened": "As costas esculpidas deslizam e se separam. A porta se abre.",
+          "also": [
+            "um mapa",
+            "o mapa"
+          ]
+        }
+      }
+    },
+    "tesouro": {
+      "name": "Tesouro",
+      "description": "Um baú sobre um pedestal, e nada mais.",
+      "goal": true,
+      "exits": {
+        "oeste": "antecamara"
+      }
+    }
+  }
+}

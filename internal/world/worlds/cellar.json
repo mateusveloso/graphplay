@@ -86,7 +86,10 @@
           "riddle": "I speak without a mouth and hear without ears. I have no body, but I come alive with the wind. What am I?",
           "answer": "echo",
           "closed": "The carved mouth speaks: a riddle, and the door does not move.",
-          "opened": "The carved mouth closes. The door swings inward."
+          "opened": "The carved mouth closes. The door swings inward.",
+          "also": [
+            "an echo"
+          ]
         }
       }
     },
