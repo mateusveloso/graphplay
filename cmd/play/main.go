@@ -71,9 +71,9 @@ func app(cfg player.Config) (*graph.Runner[player.State], error) {
 	if err != nil {
 		return nil, err
 	}
-	models := llm.Models{
-		Small: llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.ModelProposer),
-		Large: llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.ModelSolver),
+	models, err := generative(cfg)
+	if err != nil {
+		return nil, err
 	}
 	var decider jev.Decider = jev.None{}
 	if cfg.TypeSafeAPIKey != "" {
@@ -82,6 +82,26 @@ func app(cfg player.Config) (*graph.Runner[player.State], error) {
 	store := graph.FileStore[player.State]{Dir: filepath.Join(cfg.StateDir, "runs")}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	return graph.NewRunner(player.Build(w, models, decider, cfg), store, graph.WithLogger[player.State](logger))
+}
+
+// generative picks the provider of the two generative roles from Config.
+func generative(cfg player.Config) (llm.Models, error) {
+	switch cfg.Provider {
+	case player.ProviderDeepSeek:
+		if cfg.DeepSeekAPIKey == "" {
+			return llm.Models{}, errors.New("DEEPSEEK_API_KEY is not set")
+		}
+		return llm.Models{
+			Small: llm.NewDeepSeek(cfg.DeepSeekAPIKey, cfg.ModelProposer),
+			Large: llm.NewDeepSeek(cfg.DeepSeekAPIKey, cfg.ModelSolver),
+		}, nil
+	case player.ProviderAnthropic:
+		return llm.Models{
+			Small: llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.ModelProposer),
+			Large: llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.ModelSolver),
+		}, nil
+	}
+	return llm.Models{}, fmt.Errorf("unknown provider %q", cfg.Provider)
 }
 
 // parseInterspersed parses flags wherever they appear and returns the positional

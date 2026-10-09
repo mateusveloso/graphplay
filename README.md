@@ -128,10 +128,16 @@ Resume whenever you want, from any shell. The save game is one JSON file per thr
 (an expired key, a provider outage), `play resume <thread>` with no flags continues from the
 node that failed; nothing before it is re-executed.
 
+`PLAY_PROVIDER` picks who plays the two generative roles: `deepseek` (default; `deepseek-flash`
+proposes, `deepseek-v4-pro` solves, through the OpenAI-compatible endpoint with JSON mode) or
+`anthropic` (`claude-haiku-5-5` and `claude-opus-5-5`, through the official SDK with structured
+outputs). Both adapters derive the JSON schema from the same Go struct; the graph never sees
+the difference.
+
 Without `TYPESAFE_API_KEY` every exit is treated as safe: code explores everything, dies,
 reloads, remembers, and still wins. The ledger then shows what the decision model would have
-saved. Without `ANTHROPIC_API_KEY` the run fails at the first node that needs a generative
-model, which in the bundled world is the riddle.
+saved. Without a generative key the run fails at the first node that needs one, which in the
+bundled world is the riddle; `play resume <thread>` continues from there once the key is in.
 
 ## Why the shape matters
 
@@ -167,10 +173,11 @@ graph/                 the control plane: Graph, Runner, Interrupt, Store, Merma
 internal/world/        the engine and its worlds/*.json
 internal/player/       the agent: State, nodes, routing, Config, prompts/*.tmpl
 internal/jev/          Decider interface + System One client + question builders
-internal/llm/          Model interface + Anthropic structured-output adapter
+internal/llm/          Model interface; Anthropic (structured outputs) and OpenAI-compatible (JSON mode) adapters
 docs/graph.mmd         generated
 ```
 
-Dependencies: the official Anthropic Go SDK. Everything else is the standard library.
+Dependencies: the official Anthropic Go SDK and `invopop/jsonschema` (the schema the prompts
+carry). Everything else is the standard library.
 
 MIT.

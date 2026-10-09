@@ -66,10 +66,12 @@ func TestInventoryChangeInvalidatesAssessment(t *testing.T) {
 func TestConfigValidate(t *testing.T) {
 	t.Parallel()
 	bad := testConfig(t)
-	bad.RiskThreshold, bad.MaxDeaths = 1.5, 0
+	bad.RiskThreshold, bad.MaxDeaths, bad.Provider = 1.5, 0, "gemini"
 	err := bad.Validate()
-	if err == nil || !strings.Contains(err.Error(), "PLAY_RISK_THRESHOLD") || !strings.Contains(err.Error(), "PLAY_MAX_DEATHS") {
-		t.Fatalf("want both problems reported, got %v", err)
+	for _, want := range []string{"PLAY_RISK_THRESHOLD", "PLAY_MAX_DEATHS", "PLAY_PROVIDER"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("want %s reported, got %v", want, err)
+		}
 	}
 	if err := testConfig(t).Validate(); err != nil {
 		t.Fatalf("defaults must validate: %v", err)

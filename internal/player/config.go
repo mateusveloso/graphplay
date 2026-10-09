@@ -9,20 +9,30 @@ import (
 	"strings"
 )
 
+// Providers for the generative roles. The decision model is always Jev.
 const (
-	largeModel = "claude-opus-5-5"
-	smallModel = "claude-haiku-5-5"
+	ProviderDeepSeek  = "deepseek"
+	ProviderAnthropic = "anthropic"
 )
+
+// Default model per provider and role.
+var defaultModels = map[string]struct{ small, large string }{
+	ProviderDeepSeek:  {small: "deepseek-flash", large: "deepseek-v4-pro"},
+	ProviderAnthropic: {small: "claude-haiku-5-5", large: "claude-opus-5-5"},
+}
 
 // Config holds every limit and threshold. Prompts never own a loop bound.
 type Config struct {
 	World string
 
-	// One generative model per role. Proposing candidate commands is bounded and cheap to
-	// get slightly wrong: small model. Solving a riddle is real reading: large model.
+	// Provider of the generative models, and one model per role. Proposing candidate
+	// commands is bounded and cheap to get slightly wrong: small model. Solving a riddle is
+	// real reading: large model.
+	Provider      string
 	ModelProposer string
 	ModelSolver   string
 
+	DeepSeekAPIKey  string
 	AnthropicAPIKey string
 	TypeSafeAPIKey  string
 
@@ -41,10 +51,14 @@ type Config struct {
 // FromEnv reads .env (without overriding the real environment) and then the environment.
 func FromEnv() Config {
 	loadDotEnv(".env")
+	provider := env("PLAY_PROVIDER", ProviderDeepSeek)
+	models := defaultModels[provider] // unknown provider: empty defaults, Validate reports it
 	return Config{
 		World:             env("PLAY_WORLD", "cellar"),
-		ModelProposer:     env("PLAY_MODEL_PROPOSER", smallModel),
-		ModelSolver:       env("PLAY_MODEL_SOLVER", largeModel),
+		Provider:          provider,
+		ModelProposer:     env("PLAY_MODEL_PROPOSER", models.small),
+		ModelSolver:       env("PLAY_MODEL_SOLVER", models.large),
+		DeepSeekAPIKey:    os.Getenv("DEEPSEEK_API_KEY"),
 		AnthropicAPIKey:   os.Getenv("ANTHROPIC_API_KEY"),
 		TypeSafeAPIKey:    os.Getenv("TYPESAFE_API_KEY"),
 		RiskThreshold:     envFloat("PLAY_RISK_THRESHOLD", 0.6),
@@ -59,6 +73,9 @@ func FromEnv() Config {
 // Validate reports every misconfiguration at once.
 func (c Config) Validate() error {
 	var errs []error
+	if _, ok := defaultModels[c.Provider]; !ok {
+		errs = append(errs, fmt.Errorf("PLAY_PROVIDER must be %s or %s, got %q", ProviderDeepSeek, ProviderAnthropic, c.Provider))
+	}
 	for name, v := range map[string]int{
 		"PLAY_MAX_TURNS":           c.MaxTurns,
 		"PLAY_MAX_DEATHS":          c.MaxDeaths,
