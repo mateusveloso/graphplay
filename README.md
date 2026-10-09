@@ -30,45 +30,11 @@ riddles, and one fork where the decision model was not sure which arch to take (
 0.13) and the large model read the inscription. Those numbers, not the game, are what this repository is about. The reports are
 written by `play run` and `play baseline`; see "Run it".
 
-```mermaid
-graph TD;
-	__start__([start]):::first
-	observe(observe)
-	assess(assess)
-	cheap_move(cheap_move)
-	propose(propose)
-	rank(rank)
-	solve(solve)
-	act(act)
-	gate(gate)
-	finalize(finalize)
-	__end__([end]):::last
-	__start__ --> observe;
-	observe -.-> assess;
-	observe -.-> cheap_move;
-	observe -.-> finalize;
-	observe -.-> gate;
-	observe -.-> solve;
-	assess --> cheap_move;
-	cheap_move -.-> act;
-	cheap_move -.-> propose;
-	propose --> rank;
-	rank -.-> act;
-	rank -.-> gate;
-	solve --> act;
-	act --> observe;
-	gate -.-> act;
-	gate -.-> finalize;
-	finalize --> __end__;
-	classDef default fill:#f2f0ff,line-height:1.2
-	classDef first fill-opacity:0
-	classDef last fill:#bfb6fc
-```
+![the graph, each node in the colour of the layer that decides there](docs/img/graph.png)
 
 Dotted edges are decisions. Every one of them is a Go function reading typed state and a
-threshold from [`Config`](internal/player/config.go). No prompt owns a loop bound.
-
-![the graph, each node in the colour of the layer that decides there](docs/img/graph.png)
+threshold from [`Config`](internal/player/config.go). No prompt owns a loop bound. The diagram
+is generated from the code (`play diagram`, committed as `docs/graph.mmd`, diffed by CI).
 
 ## The runtime is under 500 lines, comments included, and it is yours
 
