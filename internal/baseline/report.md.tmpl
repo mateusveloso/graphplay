@@ -1,0 +1,8 @@
+# {{.World}}, baseline "{{.Mode}}": {{if .Won}}won{{else}}not finished{{end}} in {{.Turns}} turns
+
+Deaths: {{.Deaths}}
+
+| # | room | command | decided by | outcome |
+|---|---|---|---|---|
+{{range .Ledger}}| {{.Turn}} | {{.Room}} | `{{.Command}}` | {{.Layer}}{{if .Died}} (died, reloaded){{end}} | {{.Outcome}} |
+{{end}}

@@ -6,6 +6,8 @@
 //	play resume <thread> -stop
 //	play resume <thread>             continue a run that stopped on an error
 //	play diagram                     print the graph as Mermaid
+//	play baseline -mode llm|decision [-world caverns]
+//	                                 play the same world without the graph
 //
 // Flags may come before or after the positional argument.
 package main
@@ -25,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/mateusveloso/graphplay/graph"
+	"github.com/mateusveloso/graphplay/internal/baseline"
 	"github.com/mateusveloso/graphplay/internal/jev"
 	"github.com/mateusveloso/graphplay/internal/llm"
 	"github.com/mateusveloso/graphplay/internal/player"
@@ -60,6 +63,8 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		return cmdResume(ctx, cfg, rest, out)
 	case "diagram":
 		return cmdDiagram(cfg, rest, out)
+	case "baseline":
+		return cmdBaseline(ctx, cfg, rest, out)
 	default:
 		return fmt.Errorf("unknown command %q", cmd)
 	}
@@ -171,6 +176,65 @@ func cmdResume(ctx context.Context, cfg player.Config, args []string, out io.Wri
 		return err
 	}
 	return report(out, cp)
+}
+
+// cmdBaseline plays without the graph: one model, one loop, same world, same mercy.
+func cmdBaseline(ctx context.Context, cfg player.Config, args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("baseline", flag.ContinueOnError)
+	mode := fs.String("mode", "", "llm (one large generative model) or decision (one decision model)")
+	thread := fs.String("thread", "", "run id (default: random)")
+	fs.StringVar(&cfg.World, "world", cfg.World, "embedded world to play")
+	if _, err := parseInterspersed(fs, args); err != nil {
+		return err
+	}
+	if *thread == "" {
+		*thread = rand.Text()[:12]
+	}
+	w, err := world.Load(cfg.World)
+	if err != nil {
+		return err
+	}
+	lim := baseline.Limits{MaxTurns: cfg.MaxTurns, MaxDeaths: cfg.MaxDeaths}
+	var res baseline.Result
+	switch baseline.Mode(*mode) {
+	case baseline.ModeLLM:
+		models, err := generative(cfg)
+		if err != nil {
+			return err
+		}
+		res, err = baseline.PlayLLM(ctx, w, models.Large, lim)
+		if err != nil {
+			return err
+		}
+	case baseline.ModeDecision:
+		if cfg.TypeSafeAPIKey == "" {
+			return errors.New("TYPESAFE_API_KEY is not set")
+		}
+		res, err = baseline.PlayDecision(ctx, w, jev.NewClient(cfg.TypeSafeAPIKey), lim)
+		if err != nil {
+			return err
+		}
+	default:
+		return errors.New("usage: play baseline -mode llm|decision [-world id] [-thread id]")
+	}
+	report, err := res.Report()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(cfg.StateDir, "baselines", fmt.Sprintf("%s-%s-%s", cfg.World, *mode, *thread))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "game.md")
+	if err := os.WriteFile(path, []byte(report), 0o644); err != nil {
+		return err
+	}
+	verdict := "not finished"
+	if res.Won {
+		verdict = "won"
+	}
+	_, err = fmt.Fprintf(out, "\nbaseline %s on %s: %s in %d turns, %d deaths\nreport: %s\n", *mode, cfg.World, verdict, res.Turns, res.Deaths, path)
+	return err
 }
 
 func cmdDiagram(cfg player.Config, args []string, out io.Writer) error {
