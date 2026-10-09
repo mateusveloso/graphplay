@@ -98,7 +98,7 @@ and a chest.
 | `gate` | human | `Interrupt` with the screen and the reason; resume with a command or stop |
 | `finalize` | code | write `game.md`: the layer table and every turn |
 
-Routing is in [`internal/player/graph.go`](internal/player/graph.go): a turn is triaged in
+Routing is in [`internal/player/graph.go`](internal/player/graph.go): a turn is sorted in
 priority order (game over; a human is owed a look; a riddle is posed; the room is new; code
 moves), and the expensive nodes only run when the cheap ones had nothing to say.
 

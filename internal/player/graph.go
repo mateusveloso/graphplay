@@ -34,7 +34,7 @@ func Build(w world.World, models llm.Models, decider jev.Decider, cfg Config) *g
 		Edge("finalize", graph.End)
 }
 
-// routeAfterObserve is the turn's triage, in priority order: the game is over; a human is
+// routeAfterObserve sorts the turn, in priority order: the game is over; a human is
 // owed a look; a riddle is posed; the room is new; or code gets to move.
 func routeAfterObserve(cfg Config) graph.Router[State] {
 	return func(s *State) string {
