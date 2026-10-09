@@ -5,248 +5,65 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>graphplay</title>
 <style>
-  :root {
-    --bg: #0e1116; --panel: #161b22; --line: #2a313c; --fg: #d7dde6; --dim: #8b949e;
-    --code: #8b949e; --decision: #2dd4bf; --small: #f59e0b; --large: #a78bfa; --human: #4ade80;
-    --active: #f2cc60;
-  }
+  :root { --bg: #0e1116; --panel: #161b22; --line: #2a313c; --fg: #d7dde6; --dim: #8b949e;
+          --code: #9aa4b2; --decision: #2dd4bf; --small: #f59e0b; --large: #a78bfa; --human: #4ade80; --active: #f2cc60; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
-  header { display: flex; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); }
-  header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .02em; }
-  header .spacer { flex: 1; }
-  select, button, input { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: inherit; }
-  button { cursor: pointer; } button:hover { border-color: var(--dim); } button:disabled { opacity: .4; cursor: default; }
-  main { display: grid; grid-template-columns: 1.1fr 1fr; grid-template-rows: auto 1fr; gap: 12px; padding: 12px 16px; height: calc(100vh - 49px); }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow: auto; min-height: 0; }
-  .panel h2 { margin: 0 0 8px; font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
-  #graph { grid-row: 1 / span 2; display: flex; flex-direction: column; }
-  #graph svg { width: 100%; height: auto; max-height: 100%; }
-  #now .node { font-size: 18px; font-weight: 600; }
-  #now .what { color: var(--dim); margin-top: 2px; }
-  #now .detail { margin-top: 10px; white-space: pre-wrap; }
-  .layer { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid; }
-  .layer.code { color: var(--code); border-color: var(--code); }
-  .layer.decision-model { color: var(--decision); border-color: var(--decision); }
-  .layer.small-llm { color: var(--small); border-color: var(--small); }
-  .layer.large-llm { color: var(--large); border-color: var(--large); }
-  .layer.human { color: var(--human); border-color: var(--human); }
-  #screen .room { font-size: 16px; font-weight: 600; }
-  #screen .desc { margin: 6px 0 10px; color: #c9d1d9; }
-  #screen .meta span { color: var(--dim); }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--dim); font-weight: 600; font-size: 12px; }
-  td.n { color: var(--dim); width: 2.5em; }
-  #ledger { grid-column: 2; }
-  .summary { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 10px; }
-  .summary .layer b { margin-left: 6px; }
-  #gate { display: none; border-color: var(--human); }
-  #gate.on { display: block; }
-  #gate .why { color: var(--human); margin-bottom: 8px; }
-  #gate form { display: flex; gap: 8px; }
-  #gate input { flex: 1; }
-  .pulse { animation: pulse 1.2s ease-in-out infinite; }
-  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
-  .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .died { color: #f87171; }
-  .muted { color: var(--dim); }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; min-height: 100vh; display: grid; place-items: center; }
+  main { max-width: 860px; padding: 48px 28px; }
+  h1 { font-size: 40px; margin: 0 0 6px; letter-spacing: -.01em; }
+  .sub { color: var(--dim); font-size: 18px; margin-bottom: 36px; }
+  h2 { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .12em; margin: 28px 0 10px; }
+  p { margin: 0 0 10px; }
+  .ladder { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px 14px; align-items: center; }
+  .ladder .sw { width: 14px; height: 14px; border-radius: 4px; }
+  .ladder .cost { color: var(--dim); font-size: 14px; text-align: right; }
+  .rules { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 28px; }
+  .rules div::before { content: "›  "; color: var(--active); }
+  .go { margin-top: 40px; display: flex; gap: 16px; align-items: center; }
+  .go a { background: var(--active); color: #111; font-weight: 700; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 18px; }
+  .go span { color: var(--dim); font-size: 14px; }
+  .lang { position: fixed; top: 14px; right: 16px; font-size: 13px; }
+  .lang a { color: var(--dim); text-decoration: none; margin-left: 10px; }
+  .lang a.on { color: var(--fg); }
 </style>
 </head>
 <body>
-<header>
-  <h1>graphplay</h1>
-  <span class="muted">the graph plays; every turn says who decided</span>
-  <span class="spacer"></span>
-  <select id="world"></select>
-  <button id="start">play</button>
-</header>
-<main>
-  <section class="panel" id="graph"><h2>graph</h2><div id="mermaid" class="muted">loading…</div></section>
-  <section class="panel" id="right-top">
-    <div id="now"><h2>now</h2><div class="node muted">idle</div><div class="what"></div><div class="detail"></div></div>
-    <hr style="border:0;border-top:1px solid var(--line);margin:12px 0">
-    <div id="screen"><h2>what the player sees</h2><div class="room muted">—</div><div class="desc"></div><div class="meta"></div></div>
-    <div class="panel" id="gate"><h2>the graph needs you</h2><div class="why"></div>
-      <form id="gateform"><input id="cmd" placeholder='a command, e.g. "go north"' autocomplete="off"><button type="submit">send</button><button type="button" id="stop">stop</button></form>
-    </div>
-  </section>
-  <section class="panel" id="ledger">
-    <h2>ledger</h2>
-    <div class="summary" id="summary"></div>
-    <table><thead><tr><th>#</th><th>room</th><th>command</th><th>decided by</th><th>note / outcome</th></tr></thead><tbody id="rows"></tbody></table>
-    <h2 style="margin-top:14px">model usage</h2>
-    <table><thead><tr><th>model</th><th class="num">calls</th><th class="num">in</th><th class="num">out</th><th class="num">time</th></tr></thead><tbody id="usage"></tbody></table>
-  </section>
-</main>
-<script type="module">
-import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs";
-mermaid.initialize({ startOnLoad: false, theme: "dark", flowchart: { curve: "basis" } });
-
+<div class="lang"><a id="l-en" href="/?lang=en">en</a><a id="l-pt" href="/?lang=pt">pt-BR</a></div>
+<main id="main"></main>
+<script>
 const lang = new URLSearchParams(location.search).get("lang") === "pt" ? "pt" : "en";
-const T = {
+document.documentElement.lang = lang === "pt" ? "pt-BR" : "en";
+document.getElementById("l-" + lang).classList.add("on");
+const copy = {
   en: {
-    tagline: "the graph plays; every turn says who decided", play: "play", graph: "graph", now: "now", idle: "idle",
-    sees: "what the player sees", ledger: "ledger", usage: "model usage", needs: "the graph needs you",
-    send: "send", stop: "stop", placeholder: 'a command, e.g. "go north"', turn: "turn", deaths: "deaths",
-    exits: "exits", items: "items", inventory: "inventory", riddle: "riddle", last: "last", none: "none", empty: "empty",
-    cols: ["#", "room", "command", "decided by", "note / outcome"], ucols: ["model", "calls", "in", "out", "time"],
-    won: "won", stopped: "stopped", finished: "finished", died: "died, reloaded", error: "error",
-    nothingSafe: "nothing safe left to do; asking the models", noLegal: "no legal candidate; a human is next",
-    candidates: "candidates", kind: "kind", danger: "danger", protected: "protected", risk: "risk", why: "why",
-    notes: {},
-    what: {
-      observe: "code replays the command log and refreshes the screen",
-      assess: "decision model reads the prose: kind of place, danger and protection per exit",
-      cheap_move: "code: items, safe frontier, known map, look",
-      propose: "small model proposes candidate commands",
-      rank: "code filters legality; decision model picks among the survivors",
-      solve: "large model reads the riddle",
-      act: "code applies the command to the engine",
-      gate: "a human is asked",
-      finalize: "code writes the report",
-    },
+    title: "graphplay", sub: "a graph plays a text adventure, and every move says who decided",
+    game: "The game", gameP: ["Thirteen rooms, a lantern, a coin, a troll who takes a toll, two riddle doors, one fork where only an inscription says which arch is safe, and a chest.",
+      "The player sees what a person would: prose, exits, visible items. The map is never given. Dangers live in the text. Death reloads the moment before the fatal command."],
+    player: "The player is a graph", playerP: ["Nine nodes. Code owns the map, the inventory and what is legal. Models are consulted only for what code cannot decide, and each decision goes to the cheapest layer that can take it:"],
+    ladder: [["code", "code", "free"], ["decision-model", "decision model (Jev): reads the prose, answers with probabilities, cannot write", "cents"], ["small-llm", "small model: proposes commands when code is out of safe moves", "cheap"], ["large-llm", "large model: the riddles, and the fork when the decision model is unsure", "expensive"], ["human", "human: after deaths, idle turns or wrong answers", "the most expensive"]],
+    see: "What you will see", seeP: ["The map being drawn as the player learns it. Every exit coloured by the decision model's verdict, with its risk written.", "A thread from the node of the graph that decided to the move on the map, in the colour of the layer, with the name of who decided.", "A card with the why: the numbers, the rule, or the model's reasoning.", "Space pauses the graph between two nodes, so you can look."],
+    go: "watch the graph play", goHint: "the game runs live against real models; nothing is recorded or replayed",
   },
   pt: {
-    tagline: "o grafo joga; cada turno diz quem decidiu", play: "jogar", graph: "grafo", now: "agora", idle: "parado",
-    sees: "o que o jogador vê", ledger: "ledger", usage: "uso de modelo", needs: "o grafo precisa de você",
-    send: "enviar", stop: "parar", placeholder: 'um comando, ex. "go north"', turn: "turno", deaths: "mortes",
-    exits: "saídas", items: "itens", inventory: "inventário", riddle: "enigma", last: "último", none: "nenhum", empty: "vazio",
-    cols: ["#", "sala", "comando", "quem decidiu", "nota / resultado"], ucols: ["modelo", "chamadas", "entrada", "saída", "tempo"],
-    won: "venceu", stopped: "parado pelo humano", finished: "terminou", died: "morreu, recarregou", error: "erro",
-    nothingSafe: "nada seguro sobrou; perguntando aos modelos", noLegal: "nenhum candidato legal; a vez é do humano",
-    candidates: "candidatos", kind: "tipo", danger: "perigo", protected: "proteção", risk: "risco", why: "motivo",
-    notes: {
-      "new room; looking closely": "sala nova; olhando com atenção",
-      "walking to the frontier": "indo até a fronteira",
-      "walking to the exit code refused": "indo até a saída que o código recusou",
-      "only legal proposal": "única proposta legal",
-      "decision model unavailable; first proposal": "modelo de decisão indisponível; primeira proposta",
-    },
-    what: {
-      observe: "código refaz o log de comandos e atualiza a tela",
-      assess: "modelo de decisão lê a prosa: tipo de lugar, perigo e proteção por saída",
-      cheap_move: "código: itens, fronteira segura, mapa conhecido, olhar",
-      propose: "modelo pequeno propõe comandos candidatos",
-      rank: "código filtra o que é legal; modelo de decisão escolhe entre os que sobraram",
-      solve: "modelo grande lê o enigma",
-      act: "código aplica o comando no motor",
-      gate: "um humano é chamado",
-      finalize: "código escreve o relatório",
-    },
+    title: "graphplay", sub: "um grafo joga uma aventura de texto, e cada jogada diz quem decidiu",
+    game: "O jogo", gameP: ["Treze salas, uma lanterna, uma moeda, um troll que cobra pedágio, duas portas com enigma, uma bifurcação em que só uma inscrição diz qual arco é seguro, e um baú.",
+      "O jogador vê o que uma pessoa veria: prosa, saídas, itens visíveis. O mapa nunca é entregue. Os perigos estão no texto. Morrer recarrega o momento anterior ao comando fatal."],
+    player: "O jogador é um grafo", playerP: ["Nove nós. Código é dono do mapa, do inventário e do que é legal. Modelos só são consultados para o que código não decide, e cada decisão vai para a camada mais barata que consegue tomá-la:"],
+    ladder: [["code", "código", "grátis"], ["decision-model", "modelo de decisão (Jev): lê a prosa, responde com probabilidades, não escreve", "centavos"], ["small-llm", "modelo pequeno: propõe comandos quando o código ficou sem jogada segura", "barato"], ["large-llm", "modelo grande: os enigmas, e a bifurcação quando o modelo de decisão está inseguro", "caro"], ["human", "humano: depois de mortes, turnos parados ou respostas erradas", "o mais caro"]],
+    see: "O que você vai ver", seeP: ["O mapa sendo desenhado conforme o jogador descobre. Cada saída na cor do veredito do modelo de decisão, com o risco escrito.", "Um fio do nó do grafo que decidiu até a jogada no mapa, na cor da camada, com o nome de quem decidiu.", "Um cartão com o porquê: os números, a regra, ou o raciocínio do modelo.", "A barra de espaço pausa o grafo entre dois nós, para você olhar com calma."],
+    go: "ver o grafo jogar", goHint: "a partida roda ao vivo contra modelos reais; nada é gravado nem repetido",
   },
 }[lang];
-
-const $ = (s) => document.querySelector(s);
-document.documentElement.lang = lang === "pt" ? "pt-BR" : "en";
-$("header .muted").textContent = T.tagline;
-$("#start").textContent = T.play;
-$("#graph h2").textContent = T.graph;
-$("#now h2").textContent = T.now; $("#now .node").textContent = T.idle;
-$("#screen h2").textContent = T.sees;
-$("#ledger > h2").textContent = T.ledger;
-document.querySelectorAll("#ledger h2")[1].textContent = T.usage;
-$("#gate h2").textContent = T.needs;
-$("#gateform button[type=submit]").textContent = T.send; $("#stop").textContent = T.stop; $("#cmd").placeholder = T.placeholder;
-document.querySelectorAll("#ledger table")[0].querySelectorAll("th").forEach((th, i) => th.textContent = T.cols[i]);
-document.querySelectorAll("#ledger table")[1].querySelectorAll("th").forEach((th, i) => th.textContent = T.ucols[i]);
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const layer = (l) => `<span class="layer ${esc(l)}">${esc(l)}</span>`;
-// Ledger notes written by code are English identifiers; translate the known ones, pass the
-// rest (model reasoning, confidence notes) through as they came.
-const note = (n) => {
-  if (!n) return "";
-  for (const [en, pt] of Object.entries(T.notes)) if (n.startsWith(en)) return pt + n.slice(en.length);
-  return n.replace(/^confidence (\S+) over (\d+) proposals/, (_, c, k) => lang === "pt" ? `confiança ${c} entre ${k} propostas` : `confidence ${c} over ${k} proposals`)
-          .replace(/^decision model unsure \(([\d.]+)\); /, (_, c) => lang === "pt" ? `modelo de decisão inseguro (${c}); ` : `decision model unsure (${c}); `);
-};
-
-let diagram = await (await fetch("/graph.mmd")).text();
-let renderSeq = 0;
-async function drawGraph(active) {
-  // The committed diagram is drawn for a light page; restyle it for this one.
-  const dark = "\n\tclassDef default fill:#1f2630,stroke:#8b949e,color:#d7dde6;\n\tclassDef first fill:#1f2630,stroke:#8b949e,color:#d7dde6;\n\tclassDef last fill:#2a2440,stroke:#a78bfa,color:#d7dde6;\n";
-  const text = diagram + dark + (active ? `\tclassDef active fill:#f2cc60,color:#111,stroke:#f2cc60,stroke-width:2px;\n\tclass ${active} active;\n` : "");
-  const id = "g" + (++renderSeq);
-  try {
-    const { svg } = await mermaid.render(id, text);
-    $("#mermaid").innerHTML = svg;
-  } catch (e) { $("#mermaid").textContent = e.message; }
-}
-await drawGraph(null);
-
-const worlds = await (await fetch("/worlds")).json();
-for (const w of worlds.worlds) { const o = document.createElement("option"); o.value = o.textContent = w; o.selected = w === worlds.default; $("#world").append(o); }
-
-const whatFor = Object.fromEntries(Object.entries(T.what).map(([k, v]) => [k, () => v]));
-
-let startedAt = null, timer = null;
-function spinner(node) {
-  clearInterval(timer);
-  startedAt = Date.now();
-  const tick = () => { const s = ((Date.now() - startedAt) / 1000).toFixed(1); $("#now .what").textContent = `${whatFor[node]?.() ?? ""}  · ${s}s`; };
-  tick();
-  timer = setInterval(tick, 100);
-}
-
-function fmtRisk(k, dirs) {
-  if (!k || !k.risk) return "";
-  return dirs.map((d) => `${d}: ${T.danger} ${(k.danger?.[d] ?? 0).toFixed(2)} · ${T.protected} ${(k.protected?.[d] ?? 0).toFixed(2)} → ${T.risk} ${(k.risk[d] ?? 0).toFixed(2)}`).join("\n");
-}
-
-function detailFor(e) {
-  const s = e.state, obs = s.obs || {}, k = s.map?.[obs.room];
-  switch (e.node) {
-    case "assess":   return e.phase === "done" ? `${T.kind}: ${k?.kind ?? "?"}\n${fmtRisk(k, obs.exits || [])}` : "";
-    case "cheap_move": return e.phase === "done" ? (s.chosen ? `→ ${s.chosen.command}${s.chosen.note ? "   (" + note(s.chosen.note) + ")" : ""}` : T.nothingSafe) : "";
-    case "propose":  return e.phase === "done" ? `${T.candidates}: ${(s.candidates || []).join(" · ")}` : "";
-    case "rank":     return e.phase === "done" ? (s.chosen ? `→ ${s.chosen.command}   (${s.chosen.layer}${s.chosen.note ? ", " + note(s.chosen.note) : ""})` : T.noLegal) : "";
-    case "solve":    return e.phase === "done" && s.chosen ? `→ ${s.chosen.command}\n\n${s.chosen.note || ""}` : (obs.riddle ? `${T.riddle}: ${obs.riddle}` : "");
-    case "act":      { const last = s.ledger?.[s.ledger.length - 1]; return e.phase === "done" && last ? `${last.command} → ${last.died ? T.died.toUpperCase() : (last.outcome || "")}` : ""; }
-    case "gate":     return e.pause?.payload?.why ? `${T.why}: ${e.pause.payload.why}` : "";
-    default:         return "";
-  }
-}
-
-function render(e) {
-  if (e.phase === "error") { $("#now .node").textContent = T.error; $("#now .what").textContent = e.error; clearInterval(timer); return; }
-  const s = e.state, obs = s.obs || {};
-  drawGraph(e.phase === "end" ? null : e.node);
-
-  $("#now .node").className = "node"; $("#now .node").textContent = e.phase === "end" ? (s.won ? T.won : s.stopped ? T.stopped : T.finished) : e.node;
-  if (e.phase === "start" && ["assess", "propose", "rank", "solve"].includes(e.node)) { $("#now .node").classList.add("pulse"); spinner(e.node); }
-  else { clearInterval(timer); $("#now .what").textContent = e.phase === "end" ? "" : `${whatFor[e.node]?.() ?? ""}${e.took ? "  · " + (e.took / 1e9).toFixed(2) + "s" : ""}`; }
-  $("#now .detail").textContent = detailFor(e);
-
-  if (obs.name) {
-    $("#screen .room").className = "room"; $("#screen .room").textContent = `${obs.name}  ·  ${T.turn} ${s.turn}  ·  ${T.deaths} ${s.deaths}`;
-    $("#screen .desc").textContent = obs.description || "";
-    $("#screen .meta").innerHTML = `<span>${T.exits}</span> ${esc((obs.exits || []).join(", "))}<br><span>${T.items}</span> ${esc((obs.items || []).join(", ") || T.none)}<br><span>${T.inventory}</span> ${esc((obs.inventory || []).join(", ") || T.empty)}` + (obs.riddle ? `<br><span>${T.riddle}</span> ${esc(obs.riddle)}` : "") + (obs.message ? `<br><span>${T.last}</span> ${esc(obs.message)}` : "");
-  }
-
-  const rows = (s.ledger || []).map((l) => `<tr><td class="n">${l.turn}</td><td>${esc(l.room)}</td><td>${esc(l.command)}</td><td>${layer(l.layer)}</td><td>${l.died ? `<span class="died">${T.died}</span> ` : ""}${esc(note(l.note) || l.outcome || "")}</td></tr>`);
-  $("#rows").innerHTML = rows.join("");
-  const counts = {}; for (const l of s.ledger || []) counts[l.layer] = (counts[l.layer] || 0) + 1;
-  $("#summary").innerHTML = ["code", "decision-model", "small-llm", "large-llm", "human"].filter((l) => counts[l]).map((l) => `<span class="layer ${l}">${l}<b>${counts[l]}</b></span>`).join("");
-  $("#usage").innerHTML = (e.usage || []).map((u) => `<tr><td>${esc(u.model)}</td><td class="num">${u.calls}</td><td class="num">${u.input_tokens}</td><td class="num">${u.output_tokens}</td><td class="num">${(u.duration / 1e9).toFixed(1)}s</td></tr>`).join("");
-
-  const gate = $("#gate");
-  if (e.phase === "paused") { gate.classList.add("on"); $("#gate .why").textContent = e.pause?.payload?.why || ""; $("#cmd").focus(); }
-  else gate.classList.remove("on");
-  $("#start").disabled = !(e.phase === "end" || e.phase === "paused" || e.phase === "error");
-  const tbody = $("#rows"); tbody.parentElement.parentElement.scrollTop = tbody.parentElement.parentElement.scrollHeight;
-}
-
-const es = new EventSource("/events");
-es.onmessage = (m) => render(JSON.parse(m.data));
-
-$("#start").onclick = async () => {
-  $("#start").disabled = true;
-  const r = await fetch(`/start?world=${encodeURIComponent($("#world").value)}`, { method: "POST" });
-  if (!r.ok) { $("#now .what").textContent = await r.text(); $("#start").disabled = false; }
-};
-$("#gateform").onsubmit = async (ev) => { ev.preventDefault(); await fetch("/resume", { method: "POST", body: JSON.stringify({ command: $("#cmd").value }) }); $("#cmd").value = ""; };
-$("#stop").onclick = async () => { await fetch("/resume", { method: "POST", body: JSON.stringify({ stop: true }) }); };
+const colors = { code: "var(--code)", "decision-model": "var(--decision)", "small-llm": "var(--small)", "large-llm": "var(--large)", human: "var(--human)" };
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+document.getElementById("main").innerHTML = `
+  <h1>${copy.title}</h1>
+  <div class="sub">${esc(copy.sub)}</div>
+  <h2>${esc(copy.game)}</h2>${copy.gameP.map((p) => `<p>${esc(p)}</p>`).join("")}
+  <h2>${esc(copy.player)}</h2>${copy.playerP.map((p) => `<p>${esc(p)}</p>`).join("")}
+  <div class="ladder">${copy.ladder.map(([l, t, c]) => `<span class="sw" style="background:${colors[l]}"></span><span>${esc(t)}</span><span class="cost">${esc(c)}</span>`).join("")}</div>
+  <h2>${esc(copy.see)}</h2><div class="rules">${copy.seeP.map((p) => `<div>${esc(p)}</div>`).join("")}</div>
+  <div class="go"><a href="/map.html?lang=${lang}">${esc(copy.go)} →</a><span>${esc(copy.goHint)}</span></div>`;
 </script>
 </body>
 </html>

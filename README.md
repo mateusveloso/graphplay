@@ -160,14 +160,16 @@ node that failed; nothing before it is re-executed.
 go run ./cmd/play serve -world caverna -pace 1200ms   # then open http://127.0.0.1:8080/map.html?lang=pt
 ```
 
-`map.html` is the one to watch: the player's own map of the world, drawn only from what it has
+`/` is a one-screen introduction to the game and the player, with a button into `map.html`,
+the one to watch: the player's own map of the world, drawn only from what it has
 learned, with every exit coloured by the decision model's verdict and labelled with its risk;
 a thread from the node of the graph that decided to the exit or room on the map, in the colour
 of the layer; and a card with the why, in one to three lines (the two statements and three
 numbers for the decision model, the reasoning for the large model, the rule for code). Deaths
 mark the exit with a skull and the player steps back. `-pace` holds each node so a person can
-follow; code turns are otherwise microseconds. `index.html` is the audit view: the full ledger
-and the model usage as tables. Both take `?lang=pt` for Portuguese labels and captions; node
+follow; code turns are otherwise microseconds. Space, or the pause button, holds the graph
+between two nodes. `audit.html` is the audit view: the full ledger and the model usage as
+tables. Both take `?lang=pt` for Portuguese labels and captions; node
 and layer names stay as they are in the code. When the graph needs a human, both pages ask. It is the runner's observer
 streamed over Server-Sent Events; the only dependency is Mermaid from a CDN, in the page.
 

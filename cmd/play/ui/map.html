@@ -54,6 +54,14 @@
   .player circle { fill: var(--active); stroke: #111; stroke-width: 2; }
   .player text { fill: #111; font-size: 11px; font-weight: 700; }
   .icon { font-size: 15px; }
+  #legend { position: absolute; left: 12px; bottom: 12px; background: rgba(14,17,22,.92); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12px; display: grid; grid-template-columns: auto auto; gap: 4px 18px; }
+  #legend .row { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  #legend .sw { width: 22px; height: 4px; border-radius: 2px; display: inline-block; }
+  #legend .sw.dash { background: repeating-linear-gradient(90deg, var(--unknown) 0 4px, transparent 4px 8px); }
+  #legend .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .thread-label { font-size: 12px; font-weight: 700; }
+  #hold { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: var(--active); color: #111; font-weight: 700; padding: 4px 14px; border-radius: 999px; display: none; }
+  #hold.on { display: block; }
   #gate { position: absolute; left: 12px; right: 12px; bottom: 12px; display: none; background: var(--panel); border: 1px solid var(--human); border-radius: 8px; padding: 10px; }
   #gate.on { display: flex; gap: 8px; align-items: center; }
   #gate input { flex: 1; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: inherit; }
@@ -66,10 +74,13 @@
   <span class="spacer"></span>
   <select id="world"></select>
   <button id="start">play</button>
+  <button id="pause" disabled>pause</button>
 </header>
 <main>
   <section class="panel" id="graph"><h2 id="h-graph">graph</h2><div id="mermaid"></div></section>
   <section class="panel" id="mapwrap"><h2 id="h-map">map</h2><svg id="map"></svg>
+    <div id="hold"></div>
+    <div id="legend"></div>
     <div id="gate"><span id="gate-why"></span><input id="cmd" autocomplete="off"><button id="send">send</button><button id="stop">stop</button></div>
   </section>
   <section class="panel" id="card">
@@ -91,14 +102,16 @@ const T = {
         refused: "refused", safe: "safe", died: "died, reloaded", risk: "risk", danger: "danger", protected: "protected",
         rules: { "new room; looking closely": "new room: look around first", "walking to the frontier": "walking the known map to the frontier", "walking to the exit code refused": "walking to the exit it refused, to ask the models there", "only legal proposal": "the only legal proposal" },
         reading: "reads the prose of the room", asksTwo: "two statements per exit: is a danger described, does the inventory cover it",
-        riddle: "reads the riddle", proposing: "proposes commands", choosing: "chooses among the proposals", human: "a human decides", error: "error" },
+        riddle: "reads the riddle", proposing: "proposes commands", choosing: "chooses among the proposals", human: "a human decides", error: "error",
+        pause: "pause", resume: "continue", held: "paused between nodes", legend: { safe: "safe exit", danger: "refused exit (risk ≥ threshold)", unknown: "exit not yet assessed", walked: "exit walked", skull: "a death here", player: "the player", lock: "riddle door", hazard: "hazard" } },
   pt: { tagline: "o mapa nasce conforme o jogador descobre; cada jogada tem um fio até quem decidiu", play: "jogar", graph: "grafo", map: "mapa",
         turn: "turno", deaths: "mortes", send: "enviar", stop: "parar", placeholder: 'um comando, ex. "go norte"', won: "venceu", stopped: "parado", finished: "não terminou",
         layers: { code: "código", "decision-model": "modelo de decisão", "small-llm": "modelo pequeno", "large-llm": "modelo grande", human: "humano" },
         refused: "recusado", safe: "seguro", died: "morreu, recarregou", risk: "risco", danger: "perigo", protected: "proteção",
         rules: { "new room; looking closely": "sala nova: olhar com atenção primeiro", "walking to the frontier": "andando pelo mapa conhecido até a fronteira", "walking to the exit code refused": "andando até a saída que recusou, pra perguntar aos modelos lá", "only legal proposal": "a única proposta legal" },
         reading: "lê a prosa da sala", asksTwo: "duas afirmações por saída: há perigo descrito, o inventário cobre",
-        riddle: "lê o enigma", proposing: "propõe comandos", choosing: "escolhe entre as propostas", human: "um humano decide", error: "erro" },
+        riddle: "lê o enigma", proposing: "propõe comandos", choosing: "escolhe entre as propostas", human: "um humano decide", error: "erro",
+        pause: "pausar", resume: "continuar", held: "pausado entre nós", legend: { safe: "saída segura", danger: "saída recusada (risco ≥ limiar)", unknown: "saída ainda não avaliada", walked: "saída percorrida", skull: "uma morte aqui", player: "o jogador", lock: "porta com enigma", hazard: "perigo" } },
 }[lang];
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -106,6 +119,20 @@ const colorOf = { code: "#9aa4b2", "decision-model": "#2dd4bf", "small-llm": "#f
 document.documentElement.lang = lang === "pt" ? "pt-BR" : "en";
 $("#tagline").textContent = T.tagline; $("#start").textContent = T.play; $("#h-graph").textContent = T.graph; $("#h-map").textContent = T.map;
 $("#send").textContent = T.send; $("#stop").textContent = T.stop; $("#cmd").placeholder = T.placeholder;
+$("#pause").textContent = T.pause; $("#hold").textContent = T.held;
+
+// --- legend: the layers (thread colours) and the map marks
+$("#legend").innerHTML = [
+  ...Object.entries(colorOf).map(([l, c]) => `<div class="row"><span class="sw" style="background:${c}"></span>${esc(T.layers[l])}</div>`),
+  `<div class="row"><span class="sw" style="background:var(--safe)"></span>${esc(T.legend.safe)}</div>`,
+  `<div class="row"><span class="sw" style="background:var(--danger)"></span>${esc(T.legend.danger)}</div>`,
+  `<div class="row"><span class="sw dash"></span>${esc(T.legend.unknown)}</div>`,
+  `<div class="row"><span class="sw" style="background:#55606e"></span>${esc(T.legend.walked)}</div>`,
+  `<div class="row"><span class="dot" style="background:var(--active)"></span>${esc(T.legend.player)}</div>`,
+  `<div class="row">💀 ${esc(T.legend.skull)}</div>`,
+  `<div class="row">🔒 ${esc(T.legend.lock)}</div>`,
+  `<div class="row">⚠️ ${esc(T.legend.hazard)}</div>`,
+].join("");
 
 // --- the small graph on the left
 let diagram = await (await fetch("/graph.mmd")).text();
@@ -126,6 +153,8 @@ const worlds = await (await fetch("/worlds")).json();
 for (const w of worlds.worlds) { const o = document.createElement("option"); o.value = o.textContent = w; o.selected = w === worlds.default; $("#world").append(o); }
 let geo = null;
 async function loadGeo(id) { geo = await (await fetch(`/world?id=${encodeURIComponent(id)}`)).json(); }
+// who, by name: the model id for model layers, the layer name otherwise
+const whoName = (layer) => (geo?.models?.[layer]) ? `${T.layers[layer]} · ${geo.models[layer]}` : (T.layers[layer] || layer);
 await loadGeo(worlds.default);
 $("#world").onchange = () => loadGeo($("#world").value);
 
@@ -205,7 +234,7 @@ function anchorRect(key) {
 }
 
 // --- the thread from the deciding node to the action on the map
-function beam(fromNode, toKey, color) {
+function beam(fromNode, toKey, color, label) {
   const a = graphNodeRect(fromNode), b = anchorRect(toKey);
   const svg = $("#beam");
   svg.innerHTML = "";
@@ -218,12 +247,18 @@ function beam(fromNode, toKey, color) {
   path.animate([{ strokeDashoffset: len }, { strokeDashoffset: 0 }], { duration: 650, fill: "forwards", easing: "ease-out" });
   svg.append(path);
   svg.append(el("circle", { cx: x2, cy: y2, r: 7, fill: color, opacity: .9 }));
+  if (label) {
+    // the name of who decided, on the thread itself, on a dark pill so it reads over anything
+    const ly = (y1 + y2) / 2, w = label.length * 7.4 + 16;
+    svg.append(el("rect", { x: mx - w / 2, y: ly - 12, width: w, height: 22, rx: 11, fill: "#0e1116", stroke: color, "stroke-width": 1.5 }));
+    svg.append(el("text", { class: "thread-label", x: mx, y: ly + 4, "text-anchor": "middle", fill: color }, label));
+  }
 }
 
 // --- the card: who decided, what, why
 function card(layer, headline, why, meta) {
   $("#card .bar").style.background = colorOf[layer] || "#4b5563";
-  $("#who").textContent = T.layers[layer] || layer || "";
+  $("#who").textContent = layer ? whoName(layer) : "";
   $("#who").className = `who layer-${layer || ""}`;
   $("#headline").textContent = headline || "";
   $("#why").textContent = why || "";
@@ -236,7 +271,9 @@ const targetOf = (s) => { const c = s.chosen?.command || ""; const [verb, arg] =
 let startedAt = 0, timer = null;
 function spinner(text) { clearInterval(timer); startedAt = Date.now(); const tick = () => { $("#headline").textContent = `${text} · ${((Date.now() - startedAt) / 1000).toFixed(1)}s`; }; tick(); timer = setInterval(tick, 100); }
 
+let running = false;
 function render(e) {
+  if (e.phase === "hold") { $("#hold").classList.toggle("on", e.paused); $("#pause").textContent = e.paused ? T.resume : T.pause; return; }
   if (e.phase === "error") { card("", T.error, e.error, ""); clearInterval(timer); $("#start").disabled = false; return; }
   const s = e.state, obs = s.obs || {};
   drawGraph(e.phase === "end" ? null : e.node);
@@ -245,8 +282,8 @@ function render(e) {
   $("#meta").innerHTML = metaHtml;
 
   if (e.phase === "start") {
-    if (e.node === "assess") { card("decision-model", "", `${T.reading}. ${T.asksTwo}.`, metaHtml); spinner(obs.name || ""); beam("assess", obs.room, colorOf["decision-model"]); }
-    if (e.node === "solve") { card("large-llm", "", obs.riddle || "", metaHtml); spinner(T.riddle); beam("solve", obs.room, colorOf["large-llm"]); }
+    if (e.node === "assess") { card("decision-model", "", `${T.reading}. ${T.asksTwo}.`, metaHtml); spinner(obs.name || ""); beam("assess", obs.room, colorOf["decision-model"], whoName("decision-model")); }
+    if (e.node === "solve") { card("large-llm", "", obs.riddle || "", metaHtml); spinner(T.riddle); beam("solve", obs.room, colorOf["large-llm"], whoName("large-llm")); }
     if (e.node === "propose") { card("small-llm", "", "", metaHtml); spinner(T.proposing); }
     if (e.node === "rank") { card("decision-model", "", (s.candidates || []).join(" · "), metaHtml); spinner(T.choosing); }
     if (e.node === "act" && s.chosen) {
@@ -254,7 +291,7 @@ function render(e) {
       $("#card .bar").classList.remove("pulse"); clearInterval(timer);
       const why = layer === "code" ? ruleText(c.note) : (c.note || "");
       card(layer, `> ${c.command}`, why, metaHtml);
-      beam(nodeOfLayer(c), targetOf(s), colorOf[layer]);
+      beam(nodeOfLayer(c), targetOf(s), colorOf[layer], whoName(layer));
     }
     return;
   }
@@ -281,7 +318,10 @@ function render(e) {
     $("#card .bar").style.background = s.won ? "#f2cc60" : "#4b5563";
     $("#beam").innerHTML = "";
   }
-  $("#start").disabled = !(e.phase === "end" || e.phase === "paused");
+  running = !(e.phase === "end" || e.phase === "paused");
+  $("#start").disabled = running;
+  $("#pause").disabled = !running;
+  if (!running) { $("#hold").classList.remove("on"); $("#pause").textContent = T.pause; }
 }
 
 const es = new EventSource("/events");
@@ -294,6 +334,14 @@ $("#start").onclick = async () => {
   const r = await fetch(`/start?world=${encodeURIComponent($("#world").value)}`, { method: "POST" });
   if (!r.ok) { card("", T.error, await r.text(), ""); $("#start").disabled = false; }
 };
+let held = false;
+async function togglePause() {
+  if ($("#pause").disabled) return;
+  held = !held;
+  await fetch("/pause", { method: "POST", body: JSON.stringify({ paused: held }) });
+}
+$("#pause").onclick = togglePause;
+window.addEventListener("keydown", (ev) => { if (ev.code === "Space" && document.activeElement !== $("#cmd")) { ev.preventDefault(); togglePause(); } });
 $("#send").onclick = async () => { await fetch("/resume", { method: "POST", body: JSON.stringify({ command: $("#cmd").value }) }); $("#cmd").value = ""; };
 $("#cmd").addEventListener("keydown", (ev) => { if (ev.key === "Enter") $("#send").click(); });
 $("#stop").onclick = async () => { await fetch("/resume", { method: "POST", body: JSON.stringify({ stop: true }) }); };

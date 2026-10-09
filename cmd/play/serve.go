@@ -79,10 +79,52 @@ func (h *hub) subscribe() (<-chan []byte, [][]byte, func()) {
 	}
 }
 
+// latch holds a run between nodes while a viewer wants it held.
+type latch struct {
+	mu     sync.Mutex
+	paused bool
+	ch     chan struct{} // closed when unpaused
+}
+
+func newLatch() *latch {
+	ch := make(chan struct{})
+	close(ch)
+	return &latch{ch: ch}
+}
+
+func (l *latch) set(paused bool) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if paused == l.paused {
+		return paused
+	}
+	l.paused = paused
+	if paused {
+		l.ch = make(chan struct{})
+	} else {
+		close(l.ch)
+	}
+	return paused
+}
+
+// wait blocks while paused, or until the run is cancelled.
+func (l *latch) wait(ctx context.Context) error {
+	l.mu.Lock()
+	ch := l.ch
+	l.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-ch:
+		return nil
+	}
+}
+
 // server runs one game at a time and streams it.
 type server struct {
 	cfg    player.Config
 	pace   time.Duration
+	hold   *latch
 	hub    *hub
 	mu     sync.Mutex
 	meter  *metrics.Meter
@@ -99,7 +141,7 @@ func cmdServe(ctx context.Context, cfg player.Config, args []string, out io.Writ
 	if _, err := parseInterspersed(flags, args); err != nil {
 		return err
 	}
-	s := &server{cfg: cfg, pace: *pace, hub: newHub()}
+	s := &server{cfg: cfg, pace: *pace, hold: newLatch(), hub: newHub()}
 	pages, err := fs.Sub(ui, "ui")
 	if err != nil {
 		return err
@@ -112,6 +154,7 @@ func cmdServe(ctx context.Context, cfg player.Config, args []string, out io.Writ
 	mux.HandleFunc("GET /events", s.handleEvents)
 	mux.HandleFunc("POST /start", s.handleStart)
 	mux.HandleFunc("POST /resume", s.handleResume)
+	mux.HandleFunc("POST /pause", s.handlePause)
 
 	srv := &http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
@@ -161,6 +204,11 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
 		"id": wd.ID, "start": wd.Start, "lang": wd.Lang, "pos": pos,
 		"risk_threshold": s.cfg.RiskThreshold,
+		"models": map[string]string{
+			"decision-model": jev.Model,
+			"small-llm":      s.cfg.ModelProposer,
+			"large-llm":      s.cfg.ModelSolver,
+		},
 		"dirs": map[string][2]int{
 			"north": {0, -1}, "south": {0, 1}, "east": {1, 0}, "west": {-1, 0}, "up": {1, -1}, "down": {1, 1},
 			"norte": {0, -1}, "sul": {0, 1}, "leste": {1, 0}, "oeste": {-1, 0}, "cima": {1, -1}, "baixo": {1, 1},
@@ -186,12 +234,14 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 			s.hub.publish(uiEvent{Event: e, Usage: meter.Rows(), At: time.Now()})
 		}),
 		graph.WithPace[player.State](s.pace),
+		graph.WithBeforeNode[player.State](func(ctx context.Context, _ string) error { return s.hold.wait(ctx) }),
 	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	s.hub.reset()
+	s.hold.set(false)
 	s.meter, s.runner, s.thread, s.busy = meter, runner, rand.Text()[:12], true
 	go s.drive(func(ctx context.Context) (*graph.Checkpoint[player.State], error) {
 		return runner.Start(ctx, s.thread, player.State{World: cfg.World})
@@ -221,6 +271,21 @@ func (s *server) handleResume(w http.ResponseWriter, r *http.Request) {
 		return runner.Resume(ctx, thread, player.Decision{Command: req.Command, Stop: req.Stop})
 	})
 	writeJSON(w, map[string]string{"thread": thread})
+}
+
+// handlePause holds or releases the running game between nodes. The state of the latch is
+// broadcast so every open page shows it.
+func (s *server) handlePause(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Paused bool `json:"paused"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	paused := s.hold.set(req.Paused)
+	s.hub.publish(map[string]any{"phase": "hold", "paused": paused, "at": time.Now()})
+	writeJSON(w, map[string]bool{"paused": paused})
 }
 
 // drive runs one segment of a game (start or resume) and clears the busy flag after it.

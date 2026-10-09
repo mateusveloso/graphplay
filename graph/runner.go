@@ -82,6 +82,7 @@ type Runner[S any] struct {
 	log     *slog.Logger
 	observe func(Event[S])
 	pace    time.Duration
+	before  func(ctx context.Context, node string) error
 }
 
 // Option configures a Runner.
@@ -95,6 +96,12 @@ func WithLogger[S any](l *slog.Logger) Option[S] {
 // WithObserver calls fn on every phase of every node, synchronously. Keep it fast.
 func WithObserver[S any](fn func(Event[S])) Option[S] {
 	return func(r *Runner[S]) { r.observe = fn }
+}
+
+// WithBeforeNode calls fn before every node runs. Returning an error aborts the run; blocking
+// holds it, which is how a viewer pauses a game between two nodes without touching state.
+func WithBeforeNode[S any](fn func(ctx context.Context, node string) error) Option[S] {
+	return func(r *Runner[S]) { r.before = fn }
 }
 
 // WithPace waits d after every completed node, so a run that code would finish in
@@ -164,6 +171,11 @@ func (r *Runner[S]) run(ctx context.Context, cp *Checkpoint[S]) (*Checkpoint[S],
 		node, ok := r.graph.nodes[name]
 		if !ok {
 			return nil, fmt.Errorf("graph: unknown node %q", name)
+		}
+		if r.before != nil {
+			if err := r.before(ctx, name); err != nil {
+				return nil, err
+			}
 		}
 
 		r.observe(Event[S]{Thread: cp.Thread, Node: name, Phase: PhaseStart, State: cp.State})

@@ -199,6 +199,28 @@ func TestObserverSeesEveryPhase(t *testing.T) {
 	}
 }
 
+func TestBeforeNodeHookRunsBeforeEveryNodeAndCanAbort(t *testing.T) {
+	t.Parallel()
+	var seen []string
+	r, _ := graph.NewRunner(testGraph(), &graph.MemoryStore[state]{}, graph.WithBeforeNode[state](func(_ context.Context, node string) error {
+		seen = append(seen, node)
+		if node == "b" {
+			return errors.New("stop here")
+		}
+		return nil
+	}))
+	ctx := context.Background()
+	if _, err := r.Start(ctx, "t", state{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Resume(ctx, "t", answer{OK: true}); err == nil {
+		t.Fatal("want the hook's error")
+	}
+	if !slices.Equal(seen, []string{"a", "ask", "ask", "b"}) {
+		t.Fatalf("hook saw %v", seen)
+	}
+}
+
 func TestValidate(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
