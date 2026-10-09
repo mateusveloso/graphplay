@@ -68,6 +68,8 @@ graph TD;
 Dotted edges are decisions. Every one of them is a Go function reading typed state and a
 threshold from [`Config`](internal/player/config.go). No prompt owns a loop bound.
 
+![the graph, each node in the colour of the layer that decides there](docs/img/graph.png)
+
 ## The runtime is under 500 lines, comments included, and it is yours
 
 There is no LangGraph for Go, and this repo does not try to be one. [`graph/`](graph/) is the
