@@ -265,7 +265,9 @@ function anchorRect(key) {
 }
 
 // --- the thread from the deciding node to the action on the map
-function beam(fromNode, toKey, color, label) {
+let lastBeam = null;
+function beam(fromNode, toKey, color, label, remember = true) {
+  if (remember) lastBeam = { fromNode, toKey, color, label };
   const a = graphNodeRect(fromNode), b = anchorRect(toKey);
   const svg = $("#beam");
   svg.innerHTML = "";
@@ -313,6 +315,13 @@ function render(e) {
   const s = e.state, obs = s.obs || {};
   drawGraph(e.phase === "end" ? null : e.node);
   drawMap(s);
+  // the map rescales as rooms appear; the thread is drawn over it, so it follows: same
+  // origin, same label, and the target re-anchored to the player's room once the exit it
+  // pointed at has been walked and is no longer a stub
+  if (lastBeam && e.phase !== "end") {
+    const key = anchorRect(lastBeam.toKey) ? lastBeam.toKey : (obs.room || lastBeam.toKey);
+    beam(lastBeam.fromNode, key, lastBeam.color, lastBeam.label, false);
+  }
   const metaHtml = `${T.turn} <b>${s.turn ?? 0}</b>${T.deaths} <b>${s.deaths ?? 0}</b>`;
   $("#meta").innerHTML = metaHtml;
 
@@ -351,7 +360,7 @@ function render(e) {
     card("", s.won ? T.won.toUpperCase() : s.stopped ? T.stopped : T.finished, (e.usage || []).map((u) => `${u.model}: ${u.calls} calls · ${(u.duration / 1e9).toFixed(1)}s`).join("\n"), metaHtml);
     $("#who").textContent = `${T.turn} ${s.turn} · ${T.deaths} ${s.deaths}`;
     $("#card .bar").style.background = s.won ? "#f2cc60" : "#4b5563";
-    $("#beam").innerHTML = "";
+    $("#beam").innerHTML = ""; lastBeam = null;
   }
   running = !(e.phase === "end" || e.phase === "paused");
   $("#start").disabled = running;
