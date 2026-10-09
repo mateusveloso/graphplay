@@ -90,7 +90,9 @@ const layer = (l) => `<span class="layer ${esc(l)}">${esc(l)}</span>`;
 let diagram = await (await fetch("/graph.mmd")).text();
 let renderSeq = 0;
 async function drawGraph(active) {
-  const text = diagram + (active ? `\n\tclassDef active fill:#f2cc60,color:#111,stroke:#f2cc60,stroke-width:2px;\n\tclass ${active} active;\n` : "");
+  // The committed diagram is drawn for a light page; restyle it for this one.
+  const dark = "\n\tclassDef default fill:#1f2630,stroke:#8b949e,color:#d7dde6;\n\tclassDef first fill:#1f2630,stroke:#8b949e,color:#d7dde6;\n\tclassDef last fill:#2a2440,stroke:#a78bfa,color:#d7dde6;\n";
+  const text = diagram + dark + (active ? `\tclassDef active fill:#f2cc60,color:#111,stroke:#f2cc60,stroke-width:2px;\n\tclass ${active} active;\n` : "");
   const id = "g" + (++renderSeq);
   try {
     const { svg } = await mermaid.render(id, text);
@@ -118,7 +120,9 @@ let startedAt = null, timer = null;
 function spinner(node) {
   clearInterval(timer);
   startedAt = Date.now();
-  timer = setInterval(() => { const s = ((Date.now() - startedAt) / 1000).toFixed(1); $("#now .what").textContent = `${whatFor[node]?.() ?? ""}  · ${s}s`; }, 100);
+  const tick = () => { const s = ((Date.now() - startedAt) / 1000).toFixed(1); $("#now .what").textContent = `${whatFor[node]?.() ?? ""}  · ${s}s`; };
+  tick();
+  timer = setInterval(tick, 100);
 }
 
 function fmtRisk(k, dirs) {

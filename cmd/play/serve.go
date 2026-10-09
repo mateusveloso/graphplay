@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -90,15 +91,19 @@ type server struct {
 }
 
 func cmdServe(ctx context.Context, cfg player.Config, args []string, out io.Writer) error {
-	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
-	addr := fs.String("addr", "127.0.0.1:8080", "address to listen on")
-	fs.StringVar(&cfg.World, "world", cfg.World, "default world")
-	if _, err := parseInterspersed(fs, args); err != nil {
+	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
+	addr := flags.String("addr", "127.0.0.1:8080", "address to listen on")
+	flags.StringVar(&cfg.World, "world", cfg.World, "default world")
+	if _, err := parseInterspersed(flags, args); err != nil {
 		return err
 	}
 	s := &server{cfg: cfg, hub: newHub()}
+	pages, err := fs.Sub(ui, "ui")
+	if err != nil {
+		return err
+	}
 	mux := http.NewServeMux()
-	mux.Handle("GET /", http.FileServerFS(ui))
+	mux.Handle("GET /", http.FileServerFS(pages))
 	mux.HandleFunc("GET /graph.mmd", s.handleDiagram)
 	mux.HandleFunc("GET /worlds", s.handleWorlds)
 	mux.HandleFunc("GET /events", s.handleEvents)
