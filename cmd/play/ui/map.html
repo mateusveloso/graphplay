@@ -18,11 +18,16 @@
   header .spacer { flex: 1; }
   select, button { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: inherit; cursor: pointer; }
   button:disabled { opacity: .4; cursor: default; }
-  main { display: grid; grid-template-columns: 300px 1fr; grid-template-rows: 1fr 150px; gap: 12px; padding: 12px 16px; height: calc(100vh - 50px); }
+  main { display: grid; grid-template-columns: 360px 1fr; grid-template-rows: 1fr 150px; gap: 12px; padding: 12px 16px; height: calc(100vh - 50px); }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-height: 0; position: relative; }
   .panel h2 { margin: 0 0 8px; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
   #graph { grid-row: 1 / span 2; overflow: hidden; display: flex; flex-direction: column; }
-  #graph svg { width: 100%; height: auto; max-height: calc(100% - 20px); }
+  #graph svg { width: auto; max-width: 100%; height: 58%; flex: none; margin: 0 auto; display: block; }
+  #nodes { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; font-size: 11px; line-height: 1.3; overflow: auto; }
+  #nodes .n { display: grid; grid-template-columns: 10px 84px 1fr; gap: 6px; align-items: baseline; padding: 1px 0; }
+  #nodes .n .sw { width: 10px; height: 10px; border-radius: 3px; position: relative; top: 1px; }
+  #nodes .n b { font-weight: 600; }
+  #nodes .n span:last-child { color: var(--dim); }
   #mapwrap { overflow: hidden; }
   #map { width: 100%; height: calc(100% - 22px); }
   #card { display: grid; grid-template-columns: 6px 1fr auto; gap: 14px; align-items: stretch; }
@@ -54,13 +59,15 @@
   .player circle { fill: var(--active); stroke: #111; stroke-width: 2; }
   .player text { fill: #111; font-size: 11px; font-weight: 700; }
   .icon { font-size: 15px; }
-  #legend { position: absolute; left: 12px; bottom: 12px; background: rgba(14,17,22,.92); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12px; display: grid; grid-template-columns: auto auto; gap: 4px 18px; }
+  #mapwrap { display: flex; flex-direction: column; }
+  #map { flex: 1; height: auto; min-height: 0; }
+  #legend { display: flex; flex-wrap: wrap; gap: 3px 16px; font-size: 11.5px; color: var(--dim); margin: -2px 0 6px; }
   #legend .row { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
   #legend .sw { width: 22px; height: 4px; border-radius: 2px; display: inline-block; }
   #legend .sw.dash { background: repeating-linear-gradient(90deg, var(--unknown) 0 4px, transparent 4px 8px); }
   #legend .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
   .thread-label { font-size: 12px; font-weight: 700; }
-  #hold { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: var(--active); color: #111; font-weight: 700; padding: 4px 14px; border-radius: 999px; display: none; }
+  #hold { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); background: var(--active); color: #111; font-weight: 700; padding: 4px 14px; border-radius: 999px; display: none; }
   #hold.on { display: block; }
   #gate { position: absolute; left: 12px; right: 12px; bottom: 12px; display: none; background: var(--panel); border: 1px solid var(--human); border-radius: 8px; padding: 10px; }
   #gate.on { display: flex; gap: 8px; align-items: center; }
@@ -77,10 +84,9 @@
   <button id="pause" disabled>pause</button>
 </header>
 <main>
-  <section class="panel" id="graph"><h2 id="h-graph">graph</h2><div id="mermaid"></div></section>
-  <section class="panel" id="mapwrap"><h2 id="h-map">map</h2><svg id="map"></svg>
+  <section class="panel" id="graph"><h2 id="h-graph">graph</h2><div id="mermaid"></div><div id="nodes"></div></section>
+  <section class="panel" id="mapwrap"><h2 id="h-map">map</h2><div id="legend"></div><svg id="map"></svg>
     <div id="hold"></div>
-    <div id="legend"></div>
     <div id="gate"><span id="gate-why"></span><input id="cmd" autocomplete="off"><button id="send">send</button><button id="stop">stop</button></div>
   </section>
   <section class="panel" id="card">
@@ -101,6 +107,7 @@ const T = {
         layers: { code: "code", "decision-model": "decision model", "small-llm": "small model", "large-llm": "large model", human: "human" },
         refused: "refused", safe: "safe", died: "died, reloaded", risk: "risk", danger: "danger", protected: "protected",
         rules: { "new room; looking closely": "new room: look around first", "walking to the frontier": "walking the known map to the frontier", "walking to the exit code refused": "walking to the exit it refused, to ask the models there", "only legal proposal": "the only legal proposal" },
+        nodes: { observe: "code · refresh what the player sees", assess: "decision model · danger per exit", cheap_move: "code · items, look, safe exits, map", propose: "small model · candidate commands", rank: "decision model picks · large if unsure", solve: "large model · the riddle", act: "code · apply; death reloads", gate: "human · after deaths or stalls", finalize: "code · write the report" },
         reading: "reads the prose of the room", asksTwo: "two statements per exit: is a danger described, does the inventory cover it",
         riddle: "reads the riddle", proposing: "proposes commands", choosing: "chooses among the proposals", human: "a human decides", error: "error",
         pause: "pause", resume: "continue", held: "paused between nodes", legend: { safe: "safe exit", danger: "refused exit (risk ≥ threshold)", unknown: "exit not yet assessed", walked: "exit walked", skull: "a death here", player: "the player", lock: "riddle door", hazard: "hazard" } },
@@ -109,6 +116,7 @@ const T = {
         layers: { code: "código", "decision-model": "modelo de decisão", "small-llm": "modelo pequeno", "large-llm": "modelo grande", human: "humano" },
         refused: "recusado", safe: "seguro", died: "morreu, recarregou", risk: "risco", danger: "perigo", protected: "proteção",
         rules: { "new room; looking closely": "sala nova: olhar com atenção primeiro", "walking to the frontier": "andando pelo mapa conhecido até a fronteira", "walking to the exit code refused": "andando até a saída que recusou, pra perguntar aos modelos lá", "only legal proposal": "a única proposta legal" },
+        nodes: { observe: "código · atualiza o que o jogador vê", assess: "modelo de decisão · perigo por saída", cheap_move: "código · itens, olhar, saídas seguras, mapa", propose: "modelo pequeno · comandos candidatos", rank: "modelo de decisão escolhe · grande se inseguro", solve: "modelo grande · o enigma", act: "código · aplica; morte recarrega", gate: "humano · após mortes ou travas", finalize: "código · escreve o relatório" },
         reading: "lê a prosa da sala", asksTwo: "duas afirmações por saída: há perigo descrito, o inventário cobre",
         riddle: "lê o enigma", proposing: "propõe comandos", choosing: "escolhe entre as propostas", human: "um humano decide", error: "erro",
         pause: "pausar", resume: "continuar", held: "pausado entre nós", legend: { safe: "saída segura", danger: "saída recusada (risco ≥ limiar)", unknown: "saída ainda não avaliada", walked: "saída percorrida", skull: "uma morte aqui", player: "o jogador", lock: "porta com enigma", hazard: "perigo" } },
@@ -137,8 +145,14 @@ $("#legend").innerHTML = [
 // --- the small graph on the left
 let diagram = await (await fetch("/graph.mmd")).text();
 let renderSeq = 0;
+// which layer each node belongs to; the box borders take the layer colour so the graph and
+// the threads speak the same language
+const nodeLayer = { observe: "code", cheap_move: "code", act: "code", finalize: "code", assess: "decision-model", propose: "small-llm", rank: "decision-model", solve: "large-llm", gate: "human" };
+$("#nodes").innerHTML = Object.entries(nodeLayer).map(([n, l]) => `<div class="n"><span class="sw" style="background:${colorOf[l]}"></span><b>${n}</b><span>${esc(T.nodes[n])}</span></div>`).join("");
 async function drawGraph(active) {
-  const dark = "\n\tclassDef default fill:#1f2630,stroke:#8b949e,color:#d7dde6;\n\tclassDef first fill:#1f2630,stroke:#8b949e,color:#d7dde6;\n\tclassDef last fill:#2a2440,stroke:#a78bfa,color:#d7dde6;\n";
+  const dark = "\n\tclassDef default fill:#1f2630,stroke:#8b949e,color:#d7dde6;\n\tclassDef first fill:#1f2630,stroke:#8b949e,color:#d7dde6;\n\tclassDef last fill:#2a2440,stroke:#a78bfa,color:#d7dde6;\n"
+    + Object.entries(colorOf).map(([l, c]) => `\tclassDef L_${l.replace("-", "_")} fill:#1f2630,stroke:${c},stroke-width:2px,color:#d7dde6;\n`).join("")
+    + Object.entries(nodeLayer).map(([n, l]) => `\tclass ${n} L_${l.replace("-", "_")};\n`).join("");
   const text = diagram + dark + (active ? `\tclassDef active fill:#f2cc60,color:#111,stroke:#f2cc60,stroke-width:2px;\n\tclass ${active} active;\n` : "");
   try { const { svg } = await mermaid.render("g" + (++renderSeq), text); $("#mermaid").innerHTML = svg; } catch (e) { $("#mermaid").textContent = e.message; }
 }
@@ -239,7 +253,10 @@ function beam(fromNode, toKey, color, label) {
   const svg = $("#beam");
   svg.innerHTML = "";
   if (!a || !b) return;
-  const x1 = a.right, y1 = a.top + a.height / 2, x2 = b.left + b.width / 2, y2 = b.top + b.height / 2;
+  // the thread leaves the node's right edge and lands on the target's nearest edge, never on its text
+  const x1 = a.right, y1 = a.top + a.height / 2;
+  const cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+  const x2 = toKey.includes("/") ? cx : (cx > x1 ? b.left : b.right), y2 = toKey.includes("/") ? cy : cy;
   const mx = (x1 + x2) / 2;
   const path = el("path", { d: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`, fill: "none", stroke: color, "stroke-width": 3, "stroke-linecap": "round", opacity: .95 });
   const len = 2000;
@@ -248,10 +265,11 @@ function beam(fromNode, toKey, color, label) {
   svg.append(path);
   svg.append(el("circle", { cx: x2, cy: y2, r: 7, fill: color, opacity: .9 }));
   if (label) {
-    // the name of who decided, on the thread itself, on a dark pill so it reads over anything
-    const ly = (y1 + y2) / 2, w = label.length * 7.4 + 16;
-    svg.append(el("rect", { x: mx - w / 2, y: ly - 12, width: w, height: 22, rx: 11, fill: "#0e1116", stroke: color, "stroke-width": 1.5 }));
-    svg.append(el("text", { class: "thread-label", x: mx, y: ly + 4, "text-anchor": "middle", fill: color }, label));
+    // the name of who decided, pinned to the thread a little past the graph, where nothing else is
+    const w = label.length * 7.4 + 16, lx = Math.min(x1 + 70 + w / 2, mx), t = (lx - x1) / Math.max(1, x2 - x1);
+    const ly = y1 + (y2 - y1) * (3 * t * t - 2 * t * t * t); // the bezier's height at that x, near enough
+    svg.append(el("rect", { x: lx - w / 2, y: ly - 12, width: w, height: 22, rx: 11, fill: "#0e1116", stroke: color, "stroke-width": 1.5 }));
+    svg.append(el("text", { class: "thread-label", x: lx, y: ly + 4, "text-anchor": "middle", fill: color }, label));
   }
 }
 
