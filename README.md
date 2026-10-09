@@ -36,7 +36,7 @@ Dotted edges are decisions. Every one of them is a Go function reading typed sta
 threshold from [`Config`](internal/player/config.go). No prompt owns a loop bound. The diagram
 is generated from the code (`play diagram`, committed as `docs/graph.mmd`, diffed by CI).
 
-## The runtime is under 500 lines, comments included, and it is yours
+## The runtime is about 550 lines, comments included, and it is yours
 
 There is no LangGraph for Go, and this repo does not try to be one. [`graph/`](graph/) is the
 whole control plane:
@@ -56,13 +56,13 @@ The package is generic over the state type and knows nothing about models or gam
 
 ## The game
 
-[`internal/world`](internal/world/world.go) is a deterministic text-adventure engine, 250 lines,
+[`internal/world`](internal/world/world.go) is a deterministic text-adventure engine, about 400 lines,
 with worlds as JSON. It only ever reveals what a player sees: prose, exits, visible items. It never
 exposes the map, and dangers live in the prose ("from the west you hear slow, heavy breathing"),
 not in structured fields. That is what forces reading. Every game is replayable from its command
 log, which is why death is cheap: **reload is a replay without the fatal command.**
 
-Three bundled worlds. [`cellar`](internal/world/worlds/cellar.json): seven rooms, a lantern in the
+Three bundled worlds. [`cellar`](internal/world/worlds/cellar.json): eight rooms, a lantern in the
 first one, a passage that kills you in the dark, a troll who takes the coin or you, a riddle door,
 a chest. [`caverns`](internal/world/worlds/caverns.json): thirteen rooms, the lantern off the
 direct path, an exit that only `look` reveals, two riddles, a toll bridge, a fork where both
@@ -127,6 +127,9 @@ node that failed; nothing before it is re-executed.
 ```bash
 go run ./cmd/play serve -world caverna -pace 1200ms   # then open http://127.0.0.1:8080/?lang=pt
 ```
+
+The server has no authentication and anyone who reaches it can start games on your API keys;
+it binds to 127.0.0.1 by default for that reason. Keep it there.
 
 ![the map view: the player's map, a thread from the deciding node, the card with the why](docs/img/map.jpg)
 
