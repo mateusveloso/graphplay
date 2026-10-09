@@ -4,6 +4,8 @@
 //	triage resume <thread> -approve    answer the gate
 //	triage resume <thread> -reject "what to change"
 //	triage diagram                     print the graph as Mermaid
+//
+// Flags may come before or after the positional argument.
 package main
 
 import (
@@ -78,13 +80,31 @@ func app(cfg triage.Config) (*graph.Runner[triage.State], error) {
 	return graph.NewRunner(g, store, graph.WithLogger[triage.State](logger))
 }
 
+// parseInterspersed parses flags wherever they appear and returns the positional
+// arguments. The standard flag package stops at the first non-flag, which makes
+// "triage resume <thread> -approve" fail for no good reason.
+func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
+	var positional []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		if fs.NArg() == 0 {
+			return positional, nil
+		}
+		positional = append(positional, fs.Arg(0))
+		args = fs.Args()[1:]
+	}
+}
+
 func cmdRun(ctx context.Context, cfg triage.Config, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	thread := fs.String("thread", "", "thread id to use (default: random)")
-	if err := fs.Parse(args); err != nil {
+	positional, err := parseInterspersed(fs, args)
+	if err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+	if len(positional) != 1 {
 		return errors.New("usage: triage run owner/repo#123 [-thread id]")
 	}
 	if *thread == "" {
@@ -94,7 +114,7 @@ func cmdRun(ctx context.Context, cfg triage.Config, args []string, out io.Writer
 	if err != nil {
 		return err
 	}
-	cp, err := r.Start(ctx, *thread, triage.State{IssueRef: fs.Arg(0)})
+	cp, err := r.Start(ctx, *thread, triage.State{IssueRef: positional[0]})
 	if err != nil {
 		return err
 	}
@@ -105,17 +125,18 @@ func cmdResume(ctx context.Context, cfg triage.Config, args []string, out io.Wri
 	fs := flag.NewFlagSet("resume", flag.ContinueOnError)
 	approve := fs.Bool("approve", false, "approve the draft and write the report")
 	reject := fs.String("reject", "", "reject the draft with this feedback")
-	if err := fs.Parse(args); err != nil {
+	positional, err := parseInterspersed(fs, args)
+	if err != nil {
 		return err
 	}
-	if fs.NArg() != 1 || *approve == (*reject != "") {
+	if len(positional) != 1 || *approve == (*reject != "") {
 		return errors.New(`usage: triage resume <thread> (-approve | -reject "feedback")`)
 	}
 	r, err := app(cfg)
 	if err != nil {
 		return err
 	}
-	cp, err := r.Resume(ctx, fs.Arg(0), triage.Decision{Approve: *approve, Feedback: *reject})
+	cp, err := r.Resume(ctx, positional[0], triage.Decision{Approve: *approve, Feedback: *reject})
 	if err != nil {
 		return err
 	}
